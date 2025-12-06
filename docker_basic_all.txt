@@ -1,0 +1,95 @@
+A simple app.js file.
+
+-----------------Dockerfile--------------------
+FROM node:alpine // alpine is linux os. we used node from linux alpine
+COPY . /app
+WORKDIR /app
+CMD node app.js
+-----------------------------------------------
+
+Build image:
+docker build -t hello-world .
+-t = tag name, . = location of Dockerfile
+
+Avoid docker commit (only for testing, not for production)
+
+Run container (recommended way):
+docker run -d --name node-app --network internal -p 4000:4000 my-node-app
+-d = detached mode (background)
+--name = give container a name
+-p = map host port to container port
+
+Push image to Docker Hub:
+docker tag hello-world toky/hello-world
+docker push toky/hello-world
+
+Pull and run on another PC:
+docker pull toky/hello-world
+docker run -d --name hello-world -p 4000:4000 toky/hello-world
+
+Enter a running container:
+docker exec -it -u root <container_id> sh
+Used to debug or inspect inside a running container
+
+Run new container in interactive mode:
+docker run -it ubuntu
+-it = interactive terminal
+Used for debugging, testing commands, or exploring image
+
+Remove image:
+docker rmi <image_id_or_name>
+
+Summary:
+-d = run in background (for servers)
+-it = run interactively (for debugging or manual work)
+Always use Dockerfile (not commit) to build images
+Use .dockerignore to skip files like node_modules
+
+
+
+
+
+
+
+
+
+
+
+
+pwd //path of directory
+whoami // user show
+echo $0 //show location of shell program
+history // see all commands with numbering
+!2 //2nd one will run
+
+
+
+apt update //to update database of packages
+apt-install nano
+nano file1.txt
+write something and exit .
+cat file1.txt > file2.txt 
+cat file1.txt file2.txt > combined.txt
+echo hello world > file3.txt
+
+cat file1.txt //show whole file
+less file1.txt //show 15% at first or any % then we can see more
+head -n 5 file1.txt  // show 1st 5 lines 
+tail -n 5 file1.txt // show last 5 lines
+
+ctrl+l //clear terminal window of linux 
+apt remove nano // remove installed package
+
+
+cd ~ //take to home directory which is even below root
+mkdir test
+ls
+mv test docker
+ls //will show only docker 
+cd docker 
+touch hello.txt go.txt me.txt 
+mv hello.txt hello-docker.txt //rename hello.txt 
+rm file*
+cd ~
+rm -r docker //to remove directory we use -r 
+

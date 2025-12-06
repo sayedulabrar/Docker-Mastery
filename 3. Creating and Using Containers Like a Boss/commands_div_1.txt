@@ -1,0 +1,143 @@
+docker version : verify cli can talk to engine.
+docker info : most config values of engine
+docker container run
+
+Image vs Container
+*Image is application we want to run 
+*A container is an instance of that image running as a process
+*i can have many containers of same image.
+
+For example:
+
+Image is nginx web server.
+
+80:80 host port:  port in container,we can change it if we want.Host is ourself.
+docker containe run --publish 80:80 nginx // image nginx
+switch to browser ,search localhost.
+
+docker containe run --publish 80:80 --detach nginx  //to make it run background.
+docker container stop [container id] //stop docker
+
+
+docker containe run --publish 80:80 --detach --name webhost nginx //named the server
+as now logs not visible to check it's running write:docker container top webhost
+to check all status: docker container ls -a
+
+If we want to remove container we use : docker container rm [1st 3 number of container id,multiple can be place with space] 
+if we want to remove running container too : docker container rm -f [1st 3 number of container id,multiple can be place with space]
+ 
+***next***
+
+docker run --name mongo -d mongo //-d is dispatch,last mongo is image
+docker start mongo
+ps aux | grep mongo to find all process of mongo.
+docker top mongo// show processes running in a single container 
+
+****run 3 diff container with 3 diff images ****
+
+docker container run  -d  --name db  -p 3036:3036 -e MYSQL_RANDOM_ROOT_PASSWORD=yes mysql
+docker container logs db //to find generated password.
+docker container run -d   --name webserver -p 8080:80    httpd
+docker container ls //to see all active containers
+docker container run -d --name proxy -p 80:80 nginx
+//now check if they are working correctly in each port.
+curl localhost
+curl localhost: 8080
+docker container stop [press tab to get suggestions of container ids]
+docker container ls -a //check all run or stopped containers.
+docker container rm [press tab to get suggestions of container ids]
+docker image ls //to see all images.doesn't matter if containers removed.
+
+
+
+*******What's going on in containers***********
+IF 2 CONTAINER HAVE DIFFERENT PORT DEFAULT WE DON'T NEED TO WRITE IT UNLESS WE WANT IT SPECIFIC PORT
+
+docker container run -d --name proxy  nginx
+docker container run  -d  --name db   -e MYSQL_RANDOM_ROOT_PASSWORD=yes mysql
+docker container ls //lists containers
+docker container top mysql //processes of that container
+docker container inspect mysql  //json of all data of how the container started.
+docker container stats //to monitor mem usage and limit.ctrl+c to come out of it.
+
+
+********Getting a shell inside containers**********
+docker container run -it --name proxy nginx  bash         //it gives terminal inside the running container,bash is one of the available terminal in container
+now inside container.
+exit: tocome out. the container stops.
+docker container ls //proxy name not there.
+docker container ls -a//now all active and closed ones will appear
+
+As we change it from normal one to bash , so when we exit bash the container stop.
+
+docker container run -it --name ubuntu ubuntu  //it's default cmd is bash
+apt-get install  -y curl
+curn google.com
+exit //ubuntu container stop
+docker container ls -a //to verify it existed
+docker container start  -ai ubuntu //to start the stopped container again and the package curl will be present.
+exit
+
+*********Running additional process in a running container***************
+docker container exec -it mysql bash// now i am in the container with mysql
+ps aux //it will show the processes in the container [ps is no longer included in mysql img by default,use apt-get update && apt-get install -y procps]
+exit
+docker container ls //it will show mysql still tunning even though bash it stopped
+
+
+
+
+
+*******Docker Networks create,connect disconnect***************
+************************************
+
+docker container run -p 80:80 -d --name webhost nginx
+docker container port webhost
+docker container inspect --format "{{.NetworkSettings.IPAddress}}" webhost //docker ip will appear which is not same as my laptop's ip using "ifconfig en0"
+
+''
+-p means exposing port to the physical network .so we can communicate using that port to container
+But 2 container under same virtual net can communicate without port
+docker network create --driver  to create virtual net.
+Now go to bash again from where we left before.
+''
+docker network ls
+docker network inspect bridge
+docker network ls // here 3 name will appear
+//host skip virtual network but sacrifices security of container model
+//none remove eth0 and leave with localhost
+docker network create my_app_net
+docker network ls
+docker container run -p 80:80 -d --name new_nginx --network my_app_net nginx
+docker network inspect my_app_net //here we will see that new container
+docker network connect [use tab to access id of my_app_net] [place the id of container i want to add in that network]
+docker container inspect [id of webhost] //we will see it's in both bridge and my app net
+docker network disconnect [use tab to access id of my_app_net] [place the id of container i want to add in that network] //to disconnect containers
+
+
+*********DNS***********
+now in my app net new nginx is present.If we create a new container and run in that network
+docker container run -d --name my_nginx --network my_app_net nginx
+docker container inspect  [id of my_app_net] // to check the containers in it
+docker container exec -it my_nginx ping new_nginx
+
+docker container exec -it my_nginx ping new_nginx  //"docker container exec -it" can be used to jump in and run command without creating additional process
+//it will check they can communicate
+
+
+**********Excercise:Using containers for network cli app testing************
+**********learn about --rm at first*************
+docker container run --rm -it centos:7 bash
+yum update curl 
+curl version
+
+ctrl+shift+d to open a new window inside 
+
+docker container run --rm -it ubuntu:14.04 bash
+apt-get update && apt-get install -y curl
+curl --version
+
+now in both window run exit. then check using docker container ls -a
+
+
+

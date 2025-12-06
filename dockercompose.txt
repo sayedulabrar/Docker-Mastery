@@ -1,0 +1,65 @@
+docker container rm -f $(docker container ls -aq) //to remove all stopped and running containers in a single command.
+
+docker image rm -f $(docker image ls -q)// then remove all images after all containers removed
+
+-a means stopped,running all containers.
+
+******Real world application node,mongo,react************
+A project name vidly.we cd to it.Now we will run 
+docker-compose up   //this will handle all operation to start the application
+
+
+let's talk about json,yml format.
+json always under {} and parameters "parameter":values
+values can be anything. another {} too. 
+to convert json to yml we remove {},indentation,replace all " with nothing ,remove commas between each param:value 
+json format
+{
+"tags":["aa","bb"],
+"author":{
+"first_name":"Sayedul",
+"last_name" : "Abrar"
+}
+}
+
+yml format
+
+tags:
+  - aa
+  - bb
+author:
+  first_name: Sayedul
+  last_name: Abrar
+
+But yml is slower than json as it takes all string then try to evaluate
+We use yml for configuration file and json to exchange data between multiple computers
+
+
+**********see the docker-compose.yml in the same path*************
+
+docker-compose build --no-cache  // do not use cache when building image.It will not use previous cache or layers and build newly
+docker-compose build --pull //to pull latest version of image
+
+now if the project was present then if we run : docker compose build //it will build everything to run the project
+docker-compose up   //this will handle all operation to start the application
+
+Now instead of using up and build separately we can combine them.
+docker compose up --build
+docker compose up -d //up in background
+docker-compose ps //will show those running docker compose containers
+docker-compose down //stop and remove containers when we stop working with docker
+docker-compose down --rmi all // to remove the application  with all dependencies so it doesn't mess up with other dependencies and app
+
+
+
+
+************docker network***********************
+if we want to ping among frontend,backend and database we will have to get inside container as root user
+docker exec -it -u root 8c6 sh //id of frontend and user root
+ping backend
+
+Docker comes with a embedded dns server contains the name and ip of these containers
+Inside these containers we have dns resolver.It talk with dns server to find ip of the target container
+when we ping dns server returns ip and resolver use it to talk with the containers.To check it we can get into the container like before and run
+ifconfig //it will show ip address
+
