@@ -1344,3 +1344,628 @@ docker volume rm cass-shared
 - **docker volume rm cass-shared**: Deletes the cass-shared volume.
 
 ![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2014/images/8.png)
+
+
+# Log Sharing Between Containers
+
+In this Lab, we will demonstrate the process of sharing files between multiple Docker containers using two methods: `bind mounts` and `Docker volumes`. The goal is to showcase the benefits of Docker volumes over bind mounts, and to illustrate the flexibility and ease of use provided by anonymous volumes and the `--volumes-from` flag.
+
+## Scenario Overview
+
+### Bind Mount Example
+We start by setting up a directory on the host and bind-mounting it into two containersâ€”one for writing log files and one for reading them.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/new1.svg)
+
+### Docker Volume Example
+
+ We then perform the same operation using Docker volumes, eliminating host-specific dependencies.
+
+### Anonymous Volumes and `--volumes-from` Flag
+
+Finally, we demonstrate using anonymous volumes and the `--volumes-from` flag to dynamically share volumes between multiple containers.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/new2.svg)
+
+## Initial setup:
+
+First we will create a docker image that performs simple file writting application in a Docker container. Hereâ€™s how you can create your own:
+
+**1. Create a Dockerfile**
+
+```Dockerfile
+FROM alpine:latest
+RUN apk add --no-cache bash
+CMD ["sh", "-c", "while true; do date >> /data/logA; sleep 1; done"]
+```
+
+**2. Build the Docker image**
+
+```sh
+docker build -t my_writer .
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-7.png)
+
+**3. Verify the docker image**
+
+```sh
+docker images
+```
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-8.png)
+
+## Log sharing using Bind Mount:
+
+**1. Setup a Known Location on Host**:
+
+```sh
+LOG_SRC=~/web-logs-example
+mkdir ${LOG_SRC}
+```
+- **LOG_SRC**: This is an environment variable that stores the path to the directory where the logs will be stored.
+- **mkdir ${LOG_SRC}**: This command creates a new directory at the path specified by LOG_SRC.
+
+**2. Create and Run a Log-Writing Container and use `bind mounts` to share the log directory**:
+
+```sh
+docker run --name plath -d \
+    --mount type=bind,src=${LOG_SRC},dst=/data \
+    my_writer
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-9.png)
+
+**3. Create and Run a Log-Reading Container and use `bind mounts` to share**:
+
+```sh
+docker run --rm \
+    --mount type=bind,src=${LOG_SRC},dst=/data \
+    alpine:latest \
+    head /data/logA
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-10.png)
+
+*Explanation:*
+
+- **docker run**: This command creates and starts a new container.
+- **--name plath**: This names the container "plath".
+- **-d**: This flag runs the container in detached mode, meaning it runs in the background.
+- **--mount type=bind,src=${LOG_SRC},dst=/data**: This option specifies a bind mount. It maps the host directory (src) to the container directory (dst).
+  - **type=bind**: Indicates the type of mount.
+  - **src=${LOG_SRC}**: Source directory on the host.
+  - **dst=/data**: Destination directory inside the container.
+- **--rm**: This flag automatically removes the container when it exits.
+- **alpine:latest**: The image used to create the container. Alpine is a lightweight Linux distribution.
+- **head /data/logA**: This command reads the top part of the log file.
+
+**View Logs from Host**:
+
+We can also view the logs directly from the host.
+
+```sh
+cat ${LOG_SRC}/logA
+```
+- **cat**: This command displays the contents of the file.
+- **${LOG_SRC}/logA**: Path to the log file on the host.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-11.png)
+
+**Stop the Log-Writing Container**:
+
+```sh
+docker rm -f plath
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-2.png)
+
+## Log sharing using Docker Volume: 
+
+Now we will achieve the same result using docker volume.
+
+**1. Create Docker Volume**:
+
+```sh
+docker volume create --driver local logging-example
+docker volume ls
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image.png)
+
+**Explanation:**
+
+- **docker volume create**: This command creates a new Docker volume.
+- **--driver local**: This specifies the volume driver to use. "local" is the default driver.
+- **logging-example**: Name of the volume.
+
+**2. Create and Run a Log-Writing Container**:
+
+```sh
+docker run --name plath -d \
+    --mount type=volume,src=logging-example,dst=/data \
+    my_writer
+```
+
+**3. Create and Run a Log-Reading Container**:
+
+```sh
+docker run --rm \
+    --mount type=volume,src=logging-example,dst=/data \
+    alpine:latest \
+    head /data/logA
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-12.png)
+
+**Explanation:**
+
+- **docker run**: This command runs a new container.
+- **--mount type=volume,src=logging-example,dst=/data**: This option specifies a volume mount.
+  - **type=volume**: Indicates the type of mount.
+  - **src=logging-example**: Source volume.
+  - **dst=/data**: Destination directory inside the container.
+
+
+**4. View Logs from Host**:
+
+```sh
+cat /var/lib/docker/volumes/logging-example/_data/logA
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-4.png)
+
+
+**5. Stop the Log-Writing Container**:
+```sh
+docker stop plath
+```
+
+## Anonymous Volumes
+
+Now, let's explore using anonymous volumes and the `--volumes-from` flag.
+
+**1. Create Containers with Anonymous Volumes**:
+```sh
+docker run --name fowler \
+    --mount type=volume,dst=/library/PoEAA \
+    --mount type=bind,src=/tmp,dst=/library/DSL \
+    alpine:latest \
+    echo "Fowler collection created."
+
+docker run --name knuth \
+    --mount type=volume,dst=/library/TAoCP.vol1 \
+    --mount type=volume,dst=/library/TAoCP.vol2 \
+    --mount type=volume,dst=/library/TAoCP.vol3 \
+    --mount type=volume,dst=/library/TAoCP.vol4.a \
+    alpine:latest \
+    echo "Knuth collection created"
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-1.png)
+
+**Explanation:**
+
+- **--mount type=volume,dst=/library/PoEAA**: Creates an anonymous volume mounted at /library/PoEAA.
+- **--mount type=bind,src=/tmp,dst=/library/DSL**: Creates a bind mount from /tmp on the host to /library/DSL in the container.
+
+**2. Share Volumes with Another Container**
+
+Create a container that uses the volumes from the previous containers.
+
+```sh
+docker run --name reader \
+    --volumes-from fowler \
+    --volumes-from knuth \
+    alpine:latest ls -l /library/
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-5.png)
+
+**Explanation:**
+
+- **--volumes-from fowler**: Copies the mount points from the container "fowler".
+- **--volumes-from knuth**: Copies the mount points from the container "knuth".
+- **ls -l /library/**: Lists the contents of the /library/ directory.
+
+**3. Inspect Volumes of the New Container**:
+
+Check the volumes of the new container.
+
+```sh
+docker inspect --format "{{json .Mounts}}" reader | jq .
+```
+
+*Expected Output:* (Make sure to install `jq` command-line tool if you want to format the JSON output in a prettier way)
+
+```bash
+sudo apt-get update
+sudo apt install jq -y
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-13.png)
+- **docker inspect**: Provides detailed information about Docker objects.
+- **--format "{{json .Mounts}}"**: Formats the output to show the mounts of the container.
+
+## Cleaning up volumes
+
+### Removing a Specific Volume
+
+```sh
+docker volume ls
+docker volume rm <volume_name>
+```
+
+### Pruning Unused Volumes
+
+```sh
+docker volume prune
+```
+
+### Forcefully Removing All Volumes
+
+```sh
+docker stop $(docker ps -aq)
+docker rm $(docker ps -aq)
+docker volume rm $(docker volume ls -q)
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2015/images/image-14.png)
+
+By following these procedures, you can efficiently manage and remove Docker volumes, ensuring your Docker environment remains clean and optimized.
+
+### Conclusion
+
+This scenario highlights the advantages of using Docker volumes over bind mounts for sharing files between containers. Docker volumes offer better portability, simplified management, and improved security. Additionally, using anonymous volumes and the `--volumes-from` flag provides dynamic and flexible data sharing, making it easier to manage complex containerized applications.
+
+
+# Communication Between Containers in a Custom Bridge Network
+
+When working with Docker, containers by default are isolated. However, when containers need to communicate with each other, you can connect them to the same Docker network. A **user-defined bridge network** provides more control over how Docker containers communicate compared to the default bridge network. This guide will walk you through setting up a custom bridge network, launching multiple Nginx containers on that network, and verifying communication between them.
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/new.svg)
+
+## Why Use a User-Defined Bridge Network?
+
+By default, Docker containers can communicate over a built-in network called the "default bridge network." However, using a **user-defined bridge network** provides the following benefits:
+
+- **Name resolution:** Containers connected to the same network can communicate by their container names, making it easier to manage multi-container setups.
+- **Isolated environment:** Containers on a user-defined network are isolated from others unless explicitly connected to other networks.
+- **Security:** You can control which containers can communicate by connecting them only to specific networks.
+  
+Now, let's move on to creating the network and launching our containers.
+
+
+## Creating the User-Defined Bridge Network
+
+The first step is to create a custom bridge network. Docker allows you to create networks of different types, such as `bridge`, `overlay`, and `host`. Here, we'll use the **bridge** driver, which is the default type for local container communication on a single host.
+
+Run the following command to create the network:
+
+```shell
+docker network create --driver bridge my-bridge-network
+```
+
+This command creates a bridge network named `my-bridge-network`. You can inspect the network details using the command below:
+
+```shell
+docker network inspect my-bridge-network
+```
+
+This will give you detailed information about the network, including its subnet, gateway, and connected containers.
+
+### Verifying Network Creation
+
+You can list all existing Docker networks by running:
+
+```shell
+docker network ls
+```
+
+Expected Output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-1.png)
+
+The newly created `my-bridge-network` should appear in the list, showing that it uses the `bridge` driver.
+
+## Launching Containers and Connecting to the Network
+
+In this section, we'll launch three containers (`container1`, `container2`, and `container3`), each running the **Nginx** web server, and connect them to our user-defined network.
+
+### Launching Container 1
+
+We use the following command to launch `container1`, and immediately connect it to the `my-bridge-network` network:
+
+```shell
+docker run -d --name container1 --network=my-bridge-network nginx
+```
+
+This will run the Nginx web server in the background (`-d`) and assign the name `container1` to the instance.
+
+### Launching Container 2
+
+Similarly, to launch `container2`, use:
+
+```shell
+docker run -d --name container2 --network=my-bridge-network nginx
+```
+
+### Launching Container 3
+
+Finally, to launch `container3`, use:
+
+```shell
+docker run -d --name container3 --network=my-bridge-network nginx
+```
+
+With all three containers running, they are now connected to the same network, `my-bridge-network`. This enables them to communicate directly with one another.
+
+
+## Verifying Container Status
+
+To check the status of the running containers, use the command:
+
+```shell
+docker ps
+```
+
+Expected output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-2.png)
+
+Here, you'll see the list of running containers along with their names, statuses, and other details like port mappings. The containers `container1`, `container2`, and `container3` should be listed as running, confirming that Nginx is operational inside each container.
+
+
+## Verifying Communication Between Containers
+
+Now that the containers are up and running, let's check if they can communicate with each other using their container names.
+
+### Accessing the Shell of Container 1
+
+First, we'll access the shell of `container1` to ping the other containers. Run:
+
+```shell
+docker exec -it container1 /bin/bash
+```
+
+This opens an interactive shell session inside `container1`. From this session, we can try pinging the other containers by their names.
+
+### Pinging Container 2 from Container 1
+
+
+To test connectivity from `container1` to `container2`, we will run a ping command. First we need to install the `ping` command in the `container1`.
+
+```shell
+apt-get update
+apt-get install -y iputils-ping
+```
+
+Now we can ping `container2` from `container1`.
+
+```shell
+ping container2 -c 5
+```
+
+This command will send 5 ICMP echo requests to `container2`. A successful ping will indicate that `container1` can communicate with `container2`.
+
+Expected Output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-3.png)
+
+### Pinging Container 3 from Container 1
+
+Next, try pinging `container3` from `container1`:
+
+```shell
+ping container3 -c 5
+```
+
+Expected Output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-4.png)
+
+The successful responses confirm that `container1` can reach both `container2` and `container3` within the custom network.
+
+### Accessing the Shell of Container 2
+
+We can repeat the process from another container. Access the shell of `container2` by running:
+
+```shell
+docker exec -it container2 /bin/bash
+```
+
+Once inside the shell, you can ping `container1` and `container3`.
+
+### Pinging Container 1 from Container 2
+
+First we need to install the `ping` command in the `container2`.
+
+```shell
+apt-get update
+apt-get install -y iputils-ping
+```
+
+Now we can ping `container1` from `container2`.
+
+```shell
+ping container1 -c 5
+```
+
+Expected Output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-6.png)
+
+### Pinging Container 3 from Container 2
+
+```shell
+ping container3 -c 5
+```
+
+Expected Output:
+
+![image](https://raw.githubusercontent.com/poridhiEng/lab-asset/77a2d45b5fcf1f17580591d7edd73aa97b1eaf51/Docker%20Labs/Lab%2016/images/out-5.png)
+
+These tests confirm that all the containers can communicate with each other over the custom bridge network.
+
+## Conclusion
+
+By following these steps, we successfully created a user-defined bridge network and launched multiple Nginx containers connected to the network. We verified that they can communicate with each other by pinging container names. This demonstrates how Docker networking facilitates smooth communication between containerized applications, making it easier to manage interconnected services.
+
+
+# Understanding Bridge Networks in Docker: A Comprehensive Guide
+
+In the world of containerization, Docker stands out as a powerful tool for deploying and managing applications. One of its key features is the ability to manage networking between containers, and bridge networks play a central role in facilitating this communication. In this lab, weâ€™ll dive deep into Dockerâ€™s bridge networks, exploring how to create custom networks, attach containers to multiple networks, and use diagnostic tools like `ip` and `nmap` to inspect network configurations and discover other containers. Whether youâ€™re a beginner or an experienced Docker user, this guide will provide you with a clear and detailed understanding of bridge networks.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image-1.png)
+
+## What Are Bridge Networks?
+
+Before we jump into the technical details, letâ€™s clarify what a bridge network is in Docker. By default, Docker uses a bridge network to enable communication between containers on the same host. A bridge network is essentially a virtual network that acts as a middleman, connecting containers to each other and, optionally, to the outside world via the host machine. Itâ€™s built on top of Linuxâ€™s bridge functionality, providing a layer of isolation while allowing controlled connectivity.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image.png)
+
+When you launch a container without specifying a network, Docker attaches it to the default bridge network (`bridge`). However, for more control over IP addressing, subnet configuration, and container communication, you can create custom bridge networks. These custom networks are the focus of this lab, as they offer greater flexibility and functionality.
+
+## Creating and Inspecting a Custom Bridge Network
+
+Letâ€™s begin by creating a custom bridge network and breaking down the process step by step. Open your terminal and execute the following command:
+
+```bash
+docker network create \
+  --driver bridge \
+  --label project=dockerinaction \
+  --label br-net \
+  --attachable \
+  --scope local \
+  --subnet 10.0.42.0/24 \
+  --ip-range 10.0.42.128/25 \
+  user-network
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image-2.png)
+
+This command creates a custom bridge network named `user-network`. Letâ€™s dissect its components to understand whatâ€™s happening:
+
+- **`--driver bridge`**: Specifies that weâ€™re using the bridge driver, which is the default networking mode for container communication on a single host.
+- **`--label project=dockerinaction --label br-net`**: Adds metadata labels to the network. Labels are useful for organization and filtering, especially in large projects.
+- **`--attachable`**: Makes the network attachable, meaning standalone containers (not just those managed by Docker Compose) can connect to it dynamically.
+- **`--scope local`**: Limits the networkâ€™s scope to the local Docker host, ensuring it doesnâ€™t span multiple hosts (unlike overlay networks).
+- **`--subnet 10.0.42.0/24`**: Defines the subnet for the network, in this case, a range of 256 IP addresses (from `10.0.42.0` to `10.0.42.255`).
+- **`--ip-range 10.0.42.128/25`**: Restricts the assignable IP addresses to a subset of the subnet, specifically `10.0.42.128` to `10.0.42.255` (128 addresses).
+- **`user-network`**: The name of the network, which weâ€™ll use to reference it later.
+
+This configuration gives us a tailored network environment with precise control over IP allocation and container connectivity.
+
+### Inspecting the Network
+
+Once the network is created, you can inspect its details using the `docker network inspect user-network` command. The output will include information about the subnet, IP range, gateway, and any containers currently attached. This step is crucial for verifying that the network matches your intended configuration.
+
+Now, letâ€™s launch a container and connect it to this network:
+
+```bash
+docker run -it \
+  --network user-network \
+  --name network-explorer \
+  alpine:3.8 \
+    sh
+```
+
+Hereâ€™s what this command does:
+- **`docker run -it`**: Starts an interactive terminal session in the container.
+- **`--network user-network`**: Attaches the container to our custom `user-network`.
+- **`--name network-explorer`**: Names the container for easy reference.
+- **`alpine:3.8 sh`**: Uses the lightweight Alpine Linux image (version 3.8) and starts a shell (`sh`).
+
+Once inside the container, run the following command to examine its network interfaces:
+
+```bash
+ip -f inet -4 -o addr
+```
+
+This command lists the IPv4 addresses assigned to the containerâ€™s interfaces. Youâ€™ll see output resembling:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image-3.png)
+
+- **`lo`**: The loopback interface (`127.0.0.1`), present in all networked systems.
+- **`eth0`**: The containerâ€™s Ethernet interface, assigned an IP like `10.0.42.129` from the `user-network`â€™s IP range.
+
+This confirms that the container is successfully connected to `user-network` and has an IP within the specified range.
+
+## Attaching Containers to Multiple Networks
+
+One of Dockerâ€™s powerful features is the ability to connect a single container to multiple networks. Letâ€™s create a second bridge network, `user-network2`, and attach our `network-explorer` container to it.
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/multi-net.drawio.svg)
+
+First, create the new network:
+
+```bash
+docker network create \
+  --driver bridge \
+  --label project=dockerinaction \
+  --label br-net \
+  --attachable \
+  --scope local \
+  --subnet 10.0.43.0/24 \
+  --ip-range 10.0.43.128/25 \
+  user-network2
+```
+
+This command mirrors the earlier one but uses a different subnet (`10.0.43.0/24`) and IP range (`10.0.43.128/25`). To see all available networks, run:
+
+```bash
+docker network ls
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image-4.png)
+
+Youâ€™ll see both `user-network` and `user-network2` listed, along with the default networks like `bridge`, `host`, and `none`.
+
+Now, connect the `network-explorer` container to `user-network2`:
+
+```bash
+docker network connect \
+  user-network2 \
+  network-explorer
+```
+
+This dynamically attaches the running container to the second network. Inside the container, re-run the `ip -f inet -4 -o addr` command. Youâ€™ll now see an additional interface (e.g., `eth1`) with an IP from `user-network2`, such as `10.0.43.129`. This demonstrates how a container can participate in multiple isolated networks simultaneously, enhancing its communication capabilities.
+
+## Enhancing Exploration with `nmap`
+
+To dive deeper into network discovery, letâ€™s install and use `nmap` (Network Mapper) inside the `network-explorer` container. First, install it:
+
+```bash
+docker exec -it network-explorer sh -c "apk update && apk add nmap"
+```
+
+- **`docker exec -it`**: Executes a command inside the running `network-explorer` container.
+- **`apk update && apk add nmap`**: Updates the Alpine package index and installs `nmap`.
+
+Why use `nmap`? Itâ€™s a versatile tool for network exploration, allowing us to scan for active devices, troubleshoot connectivity, and audit security within the containerized environment.
+
+### Scanning the Networks
+
+With `nmap` installed, scan the subnets of both networks:
+
+```bash
+nmap -sn 10.0.42.* 10.0.43.* -oG /dev/stdout | grep Status
+```
+
+Breaking this down:
+- **`-sn`**: Performs a ping scan (no port scanning), checking for live hosts.
+- **`10.0.42.* 10.0.43.*`**: Targets the subnets of `user-network` and `user-network2`.
+- **`-oG /dev/stdout`**: Outputs results in a greppable format to the terminal.
+- **`grep Status`**: Filters the output to show only the status of discovered hosts.
+
+The output might look like:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2017/images/image-5.png)
+
+This reveals:
+- The containerâ€™s IPs (`10.0.42.129` and `10.0.43.129`), confirming its presence on both networks.
+
+This scan provides a snapshot of active devices, helping you map out the network topology.
+
+## Conclusion
+
+Dockerâ€™s bridge networks offer a robust framework for managing container communication. By creating custom networks, attaching containers to multiple networks, and leveraging tools like `ip` and `nmap`, you gain granular control and visibility into your containerized environment. These skills are invaluable for designing scalable network architectures, troubleshooting connectivity issues, and ensuring efficient application deployment.
