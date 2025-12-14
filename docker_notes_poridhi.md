@@ -1969,3 +1969,1205 @@ This scan provides a snapshot of active devices, helping you map out the network
 ## Conclusion
 
 Dockerâ€™s bridge networks offer a robust framework for managing container communication. By creating custom networks, attaching containers to multiple networks, and leveraging tools like `ip` and `nmap`, you gain granular control and visibility into your containerized environment. These skills are invaluable for designing scalable network architectures, troubleshooting connectivity issues, and ensuring efficient application deployment.
+
+# Setting Up a Host-Like Environment Using Docker Containers
+
+Docker has revolutionized the way we develop, deploy, and manage applications by providing lightweight, portable containers. Typically, Docker containers are designed to run a single process, adhering to the **one process per container** philosophy. However, there are scenarios where you might want a container to mimic a traditional host environmentâ€”one capable of running multiple services simultaneously, such as a web server and a database. In this lab, weâ€™ll walk you through the process of creating such an environment using Docker, leveraging `supervisord` as a process manager to orchestrate multiple services within a single container.
+
+By the end of this lab, we'll have a fully functional Docker container running Nginx (a web server), MySQL (a database server), and managed by Supervisord, all within a host-like setup. Let's dive into the details.
+
+## Features of the Environment
+
+Before we begin, hereâ€™s a quick overview of the key components this setup will include:
+
+- **Nginx**: A high-performance web server to handle HTTP requests.
+- **MySQL**: A robust relational database server for data storage and management.
+- **Supervisord**: A process control system to manage and monitor multiple services within the container.
+
+This combination simulates a traditional server environment, where multiple services coexist and operate seamlessly. To illustrate the final setup, refer to the diagram below:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/supervisord.drawio.svg)
+
+## Step-by-Step Setup Process
+
+Now, let's get started with the setup process.
+
+### Step 1: Crafting the Dockerfile
+
+The foundation of any Docker container is its `Dockerfile`, a blueprint that defines the containerâ€™s structure and behavior. Letâ€™s create one **tailored** for our host-like environment.
+
+Create a file named `Dockerfile` and add the following content:
+
+```Dockerfile
+# Use an official Ubuntu base image
+FROM ubuntu:latest
+
+# Set environment variables to avoid user prompts during package installations
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update the package list and install necessary packages
+RUN apt-get update && apt-get install -y \
+    nginx \
+    mysql-server \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add supervisor configuration file
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose ports for services (e.g., 80 for Nginx, 3306 for MySQL)
+EXPOSE 80 3306
+
+# Start supervisord to run multiple services
+CMD ["/usr/bin/supervisord"]
+```
+
+#### Breaking It Down
+
+- **Base Image**: We start with `ubuntu:latest`, a lightweight yet familiar Linux distribution that provides the flexibility to install multiple services.
+- **Environment Variable**: The `DEBIAN_FRONTEND=noninteractive` setting prevents interactive prompts during package installations, ensuring the build process runs smoothly in an automated environment.
+- **Package Installation**: The `RUN` command updates the package list and installs `nginx`, `mysql-server`, and `supervisor`. The cleanup step (`rm -rf /var/lib/apt/lists/*`) reduces the image size by removing temporary files.
+- **Configuration**: We copy a custom `supervisord.conf` file (which weâ€™ll create next) into the container to define how Supervisord manages our services.
+- **Ports**: The `EXPOSE` instruction opens ports 80 (for Nginx) and 3306 (for MySQL), making these services accessible from outside the container.
+- **Entrypoint**: The `CMD` directive launches `supervisord`, which will oversee all processes within the container.
+
+### Step 2: Configuring Supervisord
+
+**Supervisord** is the glue that holds our multi-service environment together. It ensures that *Nginx* and *MySQL* run concurrently and can automatically restart if they fail. Create a file named `supervisord.conf` with the following content:
+
+```ini
+[supervisord]
+nodaemon=true
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+autorestart=true
+
+[program:mysql]
+command=/usr/sbin/mysqld
+autorestart=true
+```
+
+#### Understanding the Configuration
+
+- **`[supervisord]` Section**: The `nodaemon=true` setting ensures Supervisord runs in the foreground, which is critical for Docker containers since they require a foreground process to stay alive.
+- **`[program:nginx]` Section**: This defines the Nginx service. The `-g "daemon off;"` flag forces Nginx to run in the foreground (rather than as a background daemon), aligning with Dockerâ€™s expectations. `autorestart=true` ensures Nginx restarts if it crashes.
+- **`[program:mysql]` Section**: This specifies the MySQL service, running the `mysqld` daemon. Like Nginx, itâ€™s set to restart automatically if it fails.
+
+> Place this file in the same directory as your `Dockerfile`, as it will be copied into the container during the build process.
+
+### Step 3: Building the Docker Image
+
+With the `Dockerfile` and `supervisord.conf` ready, itâ€™s time to build the Docker image. Open a terminal in the directory containing these files and run:
+
+```sh
+docker build -t my_host_like_env .
+```
+
+- **`-t my_host_like_env`**: Tags the image with a descriptive name (`my_host_like_env`).
+- **`.`**: Specifies the current directory as the build context, where Docker looks for the `Dockerfile`.
+
+This command compiles the image layer by layer, installing dependencies and setting up the environment. Once complete, youâ€™ll have a reusable image ready to spawn containers.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image.png)
+
+### Step 4: Running the Docker Container
+
+Now, letâ€™s launch a container based on the image we built:
+
+```sh
+docker run -d --name my_container -p 80:80 -p 3306:3306 my_host_like_env
+```
+
+- **`-d`**: Runs the container in detached mode (in the background).
+- **`--name my_container`**: Assigns a friendly name to the container for easy reference.
+- **`-p 80:80 -p 3306:3306`**: Maps the containerâ€™s ports (80 and 3306) to the host machine, allowing external access to Nginx and MySQL.
+
+To verify the container is running, use:
+
+```sh
+docker ps
+```
+
+You should see output similar to this:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-1.png)
+
+This confirms the container is active and the ports are correctly mapped.
+
+To explore the containerâ€™s internals, open a shell inside it:
+
+```sh
+docker exec -it my_container /bin/bash
+```
+
+Once inside, check the running processes with:
+
+```sh
+ps -ef
+```
+
+This command lists all active processes, confirming that both Nginx and MySQL are operational. Youâ€™ll see output similar to this:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-2.png)
+
+Exit the container by typing `exit`.
+
+### Step 5: Accessing and Testing Services
+
+With the container running, letâ€™s test the services to ensure theyâ€™re functioning as expected.
+
+#### Accessing Nginx Web Server
+
+1. **Test Nginx with `curl`**:
+
+   From your host machine terminal, run:
+
+   ```sh
+   curl http://localhost:80
+   ```
+
+   If successful, this retrieves Nginxâ€™s default welcome page, confirming the web server is operational. The output might look like this:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-3.png)
+
+   You can also access the Nginx welcome page by clicking on the link provided in the output.
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-4.png)
+
+2. **View Nginx Logs**:
+   To monitor Nginx activity, check its access log:
+
+   ```sh
+   docker exec -it my_container tail -f /var/log/nginx/access.log
+   ```
+
+   This streams the log in real-time. For errors, replace `access.log` with `error.log`. Hereâ€™s an example output:
+
+   ![Nginx Access Log](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/host-03.PNG)
+
+   Here is the Nginx welcome page:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-5.png)
+
+#### Accessing MySQL Database Server
+
+1. **Connect to MySQL**:
+   Access the MySQL server inside the container:
+
+   ```sh
+   docker exec -it my_container mysql -uroot -p
+   ```
+
+   When prompted for a password, press Enter (the default root password is empty or `root` in this setup). Once connected, you can run SQL commands as you would on any MySQL server. The interface will resemble this:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-6.png)
+
+2. **View MySQL Logs**:
+   Check MySQLâ€™s error log for troubleshooting:
+
+   ```sh
+   docker exec -it my_container tail -f /var/log/mysql/error.log
+   ```
+
+   This displays any errors or warnings. If query logging is enabled, you can replace `error.log` with `query.log`. Example output:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-7.png)
+
+## Managing Services with Supervisord
+
+Inside the container, you can use `supervisorctl` to manage the services dynamically. First, access the containerâ€™s shell:
+
+```sh
+docker exec -it my_container /bin/bash
+```
+
+Then, use these commands:
+
+- **Check Service Status**:
+
+  ```sh
+  supervisorctl status
+  ```
+
+- **Stop a Service**:
+
+  ```sh
+  supervisorctl stop nginx
+  ```
+
+- **Start a Service**:
+  ```sh
+  supervisorctl start nginx
+  ```
+
+- **Restart a Service**:
+  ```sh
+  supervisorctl restart nginx
+  ```
+
+Hereâ€™s what the status output might look like:
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2009/images/image-8.png)
+
+This gives you fine-grained control over the services, mimicking the flexibility of a traditional host.
+
+## Conclusion
+
+Congratulations! Youâ€™ve successfully set up a Docker container that emulates a traditional host environment, running Nginx and MySQL under the supervision of Supervisord. This setup is highly extensibleâ€”you can add more services, tweak configurations, or integrate additional tools as needed.
+
+# Setting Up a Docker Container with a Read-Only File System
+
+In the world of DevOps, ensuring the security and integrity of applications is paramount. **Docker**, a leading containerization platform, provides a powerful mechanism to achieve this through the use of `read-only` file systems. By configuring a Docker container to operate with a read-only file system, we can effectively prevent any modifications during runtime, thereby reducing the risk of unauthorized changes or accidental data corruption. In this detailed lab, weâ€™ll walk through the process of setting up such a container, explore its behavior, and verify its read-only natureâ€”all while adopting a formal tone suitable for professionals and enthusiasts alike.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2010/images/image.png)
+
+## Why Use a Read-Only File System?
+
+Before diving into the technical steps, letâ€™s consider the motivation behind this setup. Containers are often deployed in production environments where consistency and security are non-negotiable. A read-only file system ensures that the containerâ€™s core filesâ€”those baked into the imageâ€”cannot be altered after the container starts. This is particularly useful for `stateless` applications, where runtime data is managed **externally** (e.g., via mounted volumes or databases), and the container itself should remain immutable. By enforcing this restriction, you safeguard against potential threats, such as malicious scripts attempting to write to the file system, or even human error that might overwrite critical files.
+
+To illustrate this concept, weâ€™ll use a practical scenario and guide you through each step with detailed explanations, complete with code snippets and verification methods.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2010/images/Read-only-img.png)
+
+## Scenario: A DevOps Engineerâ€™s Task
+
+Imagine youâ€™re a DevOps engineer working for a company that prioritizes security and data integrity above all else. Your manager has tasked you with deploying a set of Docker containers that must run with read-only file systems to ensure no changes can occur during their operation. Your **goal** is twofold: configure a container with this restriction and confirm that it behaves as expectedâ€”meaning no modifications to its file system are possible. Letâ€™s break this down into actionable objectives and a step-by-step process.
+
+## Objectives
+
+1. **Set Up a Docker Container with a Read-Only File System**: Build and configure a container that restricts all write operations to its root file system.
+2. **Verify the Configuration**: Test and confirm that the file system is indeed read-only by attempting modifications and inspecting the containerâ€™s properties.
+
+## Step-by-Step Process
+
+Let's get started with the implementation.
+
+### Step 1: Crafting a Docker Image
+
+The foundation of any Docker container is its image, defined by a `Dockerfile`. This file serves as a blueprint, specifying the base image, setup instructions, and runtime behavior. Letâ€™s create a simple yet effective image for our purposes.
+
+1. **Create a Dockerfile**  
+   Start by creating a file named `Dockerfile` in an empty directory. Open it in your preferred text editor and add the following content:
+
+   ```dockerfile
+   FROM alpine:latest
+
+   # Create a directory and add a sample file
+   RUN mkdir /data && echo "This is a read-only test file" > /data/test.txt
+
+   # Set the working directory
+   WORKDIR /data
+
+   CMD ["sh"]
+   ```
+
+   Letâ€™s unpack this:  
+   - `FROM alpine:latest`: This pulls the latest version of Alpine Linux, a lightweight and secure base image ideal for minimalistic containers.  
+   - `RUN mkdir /data && echo ...`: During the image build, this command creates a `/data` directory and writes a sample file, `test.txt`, containing a simple message. This file will help us test the read-only behavior later.  
+   - `WORKDIR /data`: Sets the default working directory to `/data` when the container starts, making it easier to interact with our test file.  
+   - `CMD ["sh"]`: Specifies that the container should launch an interactive shell (`sh`) by default, allowing us to test the file system manually.
+
+2. **Build the Docker Image**  
+   With the `Dockerfile` ready, open your terminal, navigate to the directory containing the file, and execute:
+
+   ```sh
+   docker build -t readonly-test .
+   ```
+
+   Hereâ€™s whatâ€™s happening:  
+   - `docker build`: Initiates the image-building process.  
+   - `-t readonly-test`: Tags the resulting image with the name `readonly-test` for easy reference.  
+   - `.`: Points Docker to the current directory, where the `Dockerfile` resides.  
+
+   Once this command completes, youâ€™ll have a custom image ready to be instantiated as a container.
+
+### Step 2: Launching the Container with a Read-Only File System
+
+Now that we have our image, itâ€™s time to run a container with the read-only restriction applied.
+
+1. **Run the Docker Container**  
+   Execute the following command in your terminal:
+
+   ```sh
+   docker run --rm -it --read-only readonly-test
+   ```
+
+   Breaking this down:  
+   - `docker run`: Starts a new container from the specified image.  
+   - `--rm`: Automatically removes the container when it exits, keeping your system clean.  
+   - `-it`: Runs the container in interactive mode with a terminal, allowing you to type commands inside it.  
+   - `--read-only`: The star of the showâ€”this flag mounts the containerâ€™s root file system as read-only.  
+   - `readonly-test`: The name of the image we built earlier.  
+
+   After running this, youâ€™ll find yourself inside the containerâ€™s shell, ready to test its restrictions.
+
+2. **Test the Read-Only File System**  
+   Letâ€™s attempt some write operations to see if the read-only setting holds. From within the container, try these commands:
+
+   ```sh
+   # Attempt to append to the existing file
+   echo "Attempting to write to a read-only file system" >> /data/test.txt
+   
+   # Attempt to create a new file
+   touch /data/newfile.txt
+   ```
+
+   What should happen? Both commands will fail. The shell will display error messages indicating that the file system is read-only, preventing any modifications or new file creation. This is the expected behavior and a first sign that our configuration is working.
+
+### Step 3: Verifying the Read-Only Behavior
+
+To be thorough, letâ€™s confirm the read-only status with both practical tests and Dockerâ€™s introspection tools.
+
+1. **Check for Errors**  
+   When you ran the commands above, you likely saw output like this:
+
+   ```
+   sh: can't create /data/test.txt: Read-only file system
+   touch: /data/newfile.txt: Read-only file system
+   ```
+
+   These errors confirm that the file system rejects write attempts. For a visual reference, imagine a screenshot like this:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2010/images/readonly-01.PNG)
+
+   This is a clear indication that the `--read-only` flag is doing its job.
+
+2. **Inspect the Containerâ€™s Configuration**
+  
+   To double-check, letâ€™s use Dockerâ€™s `inspect` command to verify the read-only setting programmatically. Since the container is running interactively in your current terminal, open a new terminal window on your host machine. First, find the containerâ€™s name or ID by running:
+
+   ```sh
+   docker ps
+   ```
+
+   This lists all running containers. Note the `CONTAINER ID` or `NAMES` column for your `readonly-test` container. Then, run:
+
+   ```sh
+   docker inspect container_name | grep '"ReadonlyRootfs"'
+   ```
+
+   Replace `container_name` with the actual ID or name from `docker ps`. The output should look something like:
+
+   ```
+   "ReadonlyRootfs": true,
+   ```
+
+   This JSON snippet confirms that the `ReadonlyRootfs` property is set to `true`, aligning with our `--read-only` flag. For a visual example, see:
+
+   ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2010/images/readonly-02.PNG)
+
+## Conclusion
+
+By following these steps, youâ€™ve successfully created, launched, and verified a Docker container with a read-only file system. This setup ensures that the containerâ€™s root file system remains immutable during runtime, bolstering both security and data integrity. Whether youâ€™re protecting against malicious attacks or simply enforcing operational consistency, this technique is a valuable addition to your DevOps toolkit.
+
+
+# Keeping Containers Running with Supervisor
+
+In the world of containerization, ensuring that your applications remain operational is paramount. Containers, by design, are lightweight and ephemeral, meaning they can stop running if their primary process fails. To address this challenge, a **supervisor process**â€”also known as an **init process**â€”can be employed to manage and maintain the state of other programs within a container. In this lab, weâ€™ll dive deep into what a supervisor process is, why itâ€™s useful in containerized environments, and how to implement it effectively using a popular tool called `supervisord`. We'll walk through a detailed example of setting up a **LAMP** (Linux, Apache, MySQL, PHP) stack inside a Docker container.
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/arch.drawio.svg)
+
+* Use **supervisord** when a container runs **multiple processes** that need individual monitoring.
+* Docker’s `--restart` policy only restarts the **container**, not specific services inside it.
+* A supervisor can restart a **single failed service** without taking down the rest.
+* It is useful when you are **not using microservices** and instead place several components (e.g., a full LAMP stack) in one container.
+
+## Understanding the Supervisor Process
+
+A **supervisor** process is essentially a program tasked with launching and overseeing other programs. On a traditional Linux system, the first process to startâ€”known as `PID #1`â€”is the init process. This process is responsible for initializing all other system processes and ensuring they remain operational. If a process crashes unexpectedly, the init process can restart it, maintaining system stability. This same principle can be adapted to containers, where a **supervisor** process ensures that critical applications, such as a web server or database, stay running even in the face of failure.
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/flow.drawio.svg)
+
+In containerized environments like Docker, the default behavior is to tie the containerâ€™s lifecycle to a **single main process**. If that process stops, the container stops. This can be problematic for applications that rely on multiple interdependent processesâ€”like a web server and a database running together. By introducing a supervisor process, you can manage these processes collectively, restarting them as needed and keeping the container alive.
+
+Several tools can serve as supervisor processes inside containers, including `init`, `systemd`, `runit`, `upstart`, and `supervisord`. Among these, `supervisord` stands out for its simplicity, flexibility, and widespread use in containerized setups.
+
+## Why Use a Supervisor Process in Containers?
+
+
+Containers are designed to be minimal and focused, often running a single process per container. However, real-world applications sometimes require multiple processes to work together. For example, a web application might need a web server (like Apache), a database (like MySQL), and a scripting language runtime (like PHP) to function. Running these in separate containers is a common practice, but itâ€™s also possibleâ€”and sometimes more convenientâ€”to run them in a **single** container, especially for development or small-scale deployments.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/image.png)
+
+Without a supervisor process, if one of these components fails, the container could stop entirely, disrupting the application. A supervisor process mitigates this risk by monitoring the health of each process and restarting any that fail. This ensures high availability and reliability, which are critical for production environments or any system where downtime is unacceptable.
+
+## Example: Building a LAMP Stack with Supervisord
+
+To illustrate how a supervisor process works in practice, letâ€™s walk through an example of creating a Docker container that runs a full **LAMP** stackâ€”Linux, Apache, MySQL, and PHPâ€”managed by `supervisord`. This setup is particularly useful for developers who want a self-contained environment for testing web applications.
+
+### Step 1: Setting Up the Dockerfile
+
+The foundation of our container is the `Dockerfile`, a script that defines how the container image is built. Weâ€™ll start with an official Ubuntu image as our base and install the necessary components: Apache for the web server, PHP for server-side scripting, MySQL for the database, and `supervisord` to manage everything.
+
+Hereâ€™s the `Dockerfile`:
+
+```dockerfile
+# Use an official Ubuntu as a parent image
+FROM ubuntu:latest
+
+
+
+# **apache2** – Web server for serving HTTP requests.
+# **php** – PHP runtime to execute PHP scripts.
+# **libapache2-mod-php** – Enables Apache to process PHP files.
+# **mysql-client** – MySQL command-line tool for connecting to the database.
+# **supervisor** – Manages and restarts services inside the container.
+
+# Install necessary packages (Apache, PHP, MySQL client, supervisor)
+RUN apt-get update && \
+    apt-get install -y apache2 php libapache2-mod-php mysql-client supervisor && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install MySQL server (choose a root password during installation)
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" apt-get -y install mysql-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Configure Apache
+RUN a2enmod rewrite
+
+# Configure supervisord
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose ports
+EXPOSE 80 3306
+
+# Start supervisord to manage Apache and MySQL services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+```
+
+Letâ€™s break this down:
+
+- **Base Image**: We use `ubuntu:latest` as the starting point because it provides a familiar Linux environment with access to a wide range of packages.
+- **Package Installation**: The `RUN` commands install Apache, PHP, the PHP module for Apache, the MySQL client, and `supervisord`. A separate command installs the MySQL server with the `DEBIAN_FRONTEND="noninteractive"` flag to avoid interactive prompts during installation.
+- **Apache Configuration**: The `a2enmod rewrite` command enables the Apache rewrite module, which is useful for URL rewriting in web applications.
+- **Supervisord Configuration**: We copy a custom `supervisord.conf` file (which weâ€™ll define next) into the container to tell `supervisord` how to manage our processes.
+- **Ports**: We expose port 80 for HTTP traffic (Apache) and port 3306 for MySQL connections.
+- **Command**: The `CMD` instruction specifies that the container should start `supervisord` with our configuration file when it launches.
+`a2enmod` is not a package you install — it is a **built-in Apache command** used to enable an Apache module.
+
+In your Dockerfile:
+
+```
+RUN a2enmod rewrite
+```
+
+This specifically enables the **rewrite** module.
+
+Here is the short explanation you can put in a comment:
+
+* **a2enmod rewrite** – Activates Apache’s rewrite module, needed for clean URLs and many PHP frameworks.
+
+
+
+
+**“Clean URLs”** are web addresses without extra query strings or file extensions, making them easier to read and more user-friendly. For example:
+
+* Without rewrite: `http://example.com/index.php?page=about`
+* With rewrite: `http://example.com/about`
+
+The **`rewrite` module** lets Apache internally map those clean URLs to the correct files or scripts (like `index.php`) without changing what the user sees in the browser.
+
+It’s required by many PHP frameworks (Laravel, WordPress, etc.) because they rely on URL routing handled by PHP rather than static files.
+
+### Step 2: Configuring Supervisord
+
+Next, we need to create the `supervisord.conf` file in the same directory as the `Dockerfile`. This file defines how `supervisord` should manage Apache and MySQL. Hereâ€™s the configuration:
+
+```ini
+[supervisord]
+nodaemon=true
+
+[program:apache2]
+command=/usr/sbin/apache2ctl -D FOREGROUND
+
+[program:mysql]
+command=/usr/bin/mysqld_safe
+```
+
+Hereâ€™s what each section means:
+
+- **`[supervisord]`**: This section configures `supervisord` itself. The `nodaemon=true` setting ensures that `supervisord` runs in the foreground, which is necessary for Docker containers since they expect the main process to stay active.
+- **`[program:apache2]`**: This section defines the Apache process. The `command` specifies how to start Apache, with the `-D FOREGROUND` flag keeping it in the foreground as required by `supervisord`.
+- **`[program:mysql]`**: This section defines the MySQL process, using `mysqld_safe`, a script that starts the MySQL server and handles basic error recovery.
+
+### Step 3: Building and Running the Container
+
+With the `Dockerfile` and `supervisord.conf` ready, we can build the Docker image. Open a terminal in the directory containing these files and run:
+
+```sh
+docker build -t my-lamp-image .
+```
+
+This command builds an image named `my-lamp-image`. Once the build completes, start a container based on this image:
+
+```sh
+docker run -d -p 80:80 -p 3306:3306 --name lamp-container my-lamp-image
+```
+
+- **`-d`**: Runs the container in detached mode (in the background).
+- **`-p 80:80 -p 3306:3306`**: Maps the containerâ€™s ports 80 and 3306 to the same ports on the host, allowing access to Apache and MySQL from outside the container.
+- **`--name lamp-container`**: Names the container for easy reference.
+
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/image-1.png)
+
+At this point, your LAMP stack container is up and running, with `supervisord` managing Apache and MySQL.
+
+### Step 4: Verifying Running Processes
+
+To confirm that everything is working, you can check the processes running inside the container using the `docker top` command:
+
+```bash
+docker top lamp-container
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/image-2.png)
+
+This command displays a list of processes, including their host PIDs. You should see entries for `supervisord`, `apache2`, and `mysqld`, indicating that all components are active.
+
+### Step 5: Testing Supervisordâ€™s Restart Functionality
+
+One of the key benefits of using `supervisord` is its ability to restart failed processes. Letâ€™s test this by manually stopping the Apache process and observing how `supervisord` responds.
+
+First, get the process list from inside the container to find Apacheâ€™s PID:
+
+```bash
+docker exec lamp-container ps
+```
+
+This command runs the `ps` command inside the container, producing output like this:
+
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/image-3.png)
+
+Note the PID for `apache2` (in this example, 12, though it will differ in your case). Use that PID in the following command to stop Apache:
+
+```bash
+docker exec lamp-container kill <PID>
+```
+
+This sends a termination signal to the `apache2` process. Once it stops, `supervisord` detects the failure, logs the event, and restarts the process. You can view the container logs to confirm this:
+
+```sh
+docker logs lamp-container
+```
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/6e2329b5d484fd85fbd9f5b4e51aa4259ed9104f/Docker%20Labs/Lab%2011/images/image-4.png)
+
+Look for entries like these:
+
+```
+... exited: apache2 (exit status 0; expected)
+... spawned: 'apache2' with pid 820
+... success: apache2 entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+```
+
+These logs show that `apache2` exited, `supervisord` spawned a new instance with a new PID (e.g., 820), and the restarted process stabilized. This demonstrates how `supervisord` ensures the container remains functional even when a process fails.
+
+## Conclusion
+
+Using a supervisor process like `supervisord` in Docker containers provides a robust solution for managing multiple processes and maintaining application uptime. In our LAMP stack example, `supervisord` kept Apache and MySQL running smoothly, restarting them as needed to prevent downtime. This approach is particularly valuable for complex applications that require multiple services to operate in tandem within a single container.
+
+
+
+---
+You should still use a restart policy if you want Docker to automatically restart the container itself. Foreground mode does not replace that.
+
+# 1. How services normally run in a traditional Linux system
+
+On a real server (Ubuntu, CentOS, etc.):
+
+* You have **systemd** (or older init systems).
+* systemd is PID 1 and is designed to manage long-running “daemon” services.
+
+When you start Apache or MySQL on a normal Linux server:
+
+* They **daemonize** = they fork into the background.
+* systemd *expects* this behavior.
+* systemd tracks the service even if it goes into the background.
+
+Systemd knows how to:
+
+* Track PIDs
+* Read unit files
+* Restart services
+* Capture logs
+* Wait for multiple processes
+* Manage dependencies
+
+**systemd is built to understand daemon behavior.**
+
+---
+
+# 2. What happens inside a Docker container
+
+A Docker container is **NOT** a full Linux system.
+
+Docker does **not have systemd** inside it (unless you purposely install it, which is unusual).
+
+Inside Docker:
+
+* PID 1 is **your application**, e.g. supervisord or Apache.
+* Docker does **not** track background daemons. It only tracks the *main* PID.
+
+Think of Docker like this:
+
+**“I will keep the container running only as long as the main process stays alive. If PID 1 stops, the whole container stops.”**
+
+In a normal server this job is done by systemd.
+In Docker, **there is no systemd** unless you manually add it.
+
+---
+
+# 3. Why daemonizing breaks everything inside a container
+
+Let’s imagine you start Apache normally inside Docker (without foreground mode).
+
+What Apache does:
+
+1. It starts.
+2. It daemonizes → forks into the background.
+3. The original Apache process exits.
+
+Now Docker sees:
+
+**“PID 1 has exited. The container is done.”**
+
+So Docker instantly stops the container.
+
+Result:
+
+* Apache is actually still running **in the background**,
+* BUT Docker thinks the container has ended,
+* So Docker kills everything and stops the container completely.
+
+This is the core reason foreground mode is required.
+
+---
+
+# 4. Why supervisord needs foreground processes
+
+If Apache or MySQL daemonize:
+
+* supervisord starts them.
+* They fork into background.
+* supervisord thinks:
+  **“The program ended, no process to watch.”**
+* supervisord cannot track or restart them.
+* No logs go to supervisord.
+* Docker sees the container idle and may stop it.
+
+To avoid this:
+
+Apache must run with:
+
+```
+-D FOREGROUND
+```
+
+MySQL must run through:
+
+```
+mysqld_safe
+```
+
+(supervisor-friendly runner)
+
+This forces them to stay attached to supervisord.
+
+---
+
+# 5. Why it DOES work on normal Linux, but NOT in Docker
+
+### Normal Linux:
+
+* systemd is built to manage background daemons.
+* systemd tracks PID files, child processes, and service lifecycles.
+
+### Docker:
+
+* Docker is NOT a full init system.
+* Docker cannot track background daemons.
+* Docker only cares about **one** process: PID 1.
+* If the main process exits, the container terminates.
+
+This is why Apache/MySQL *cannot behave like normal daemons in Docker* unless you install systemd (which is advanced and not typical).
+
+---
+
+# 6. Short practical summary (copy-friendly)
+
+* On regular Linux, systemd manages background daemons correctly.
+* In Docker, there is no systemd.
+* If Apache/MySQL daemonize, Docker thinks the main process exited and stops the container.
+* Running in foreground keeps services attached to supervisord, so they can be monitored and restarted.
+
+---
+
+
+# Building Docker Images from a Container
+
+Building Docker images from a container involves creating a container from an existing image, making modifications, and then committing those changes to form a new image. 
+
+In this lab, we'll learn how to create a Docker image by making changes to a container and committing those changes. We'll start with a simple example where we create a `file` in a container and then `commit` this change to form a `new image`. 
+
+
+## How It Works
+
+When we create a Docker container, it uses a `Union File-System (UFS)` mount to provide its filesystem. Any changes made to the filesystem within the container are written as new layers, which are owned by the container that created them. 
+
+To build a new image, we start with an existing image, make changes to it by modifying the container's filesystem, and then commit these changes to form a new image. This new image can then be used to create further containers, encapsulating the changes made.
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2020/images/image-1.png?raw=true)
+
+
+### How UFS Works 
+
+- **Base Layer:** This is the original, unchanged filesystem, like a basic Linux operating system.
+- **Layers:** Each time you make changes (like installing software or creating files), these changes are saved as new layers on top of the base layer.
+- **Union Mount:** The union filesystem merges these layers into a single, cohesive filesystem that the container uses.
+
+    ![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2020/images/image-2.png?raw=true)
+
+    The above figure demonstrates how UFS works.
+
+## Task Description
+1. Create a container from the `ubuntu:latest` image and modify its filesystem by creating a file named `HelloWorld`.
+2. Commit the changes made in the container to a new image named `hw_image`.
+3. Remove the modified container to clean up.
+4. Verify the changes by running a new container from the `hw_image` and checking the existence of the `HelloWorld` file.
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2020/images/image.png?raw=true)
+
+
+## Step-By-Step Solution
+
+### 1. **Create a container and modify its filesystem:**
+
+Create a container from the `ubuntu:latest` image and enter the container bash:
+```sh
+docker run -it --name hw_container ubuntu:latest /bin/bash
+```
+
+You are now inside the container. You can start making changes to the container's filesystem as needed.
+
+Create a file named `HelloWorld.txt` in the container:
+```bash
+touch HelloWorld.txt
+```
+
+Exit the container:
+```bash
+exit
+```
+
+### 2. **Commit the changes to a new image:**
+
+Here we are creating a new image from our container:
+```sh
+docker container commit hw_container hw_image
+```
+
+We can see the new image using the following command:
+```bash
+docker images
+```
+
+Expected outputs:
+
+```bash
+root@e3a09282cfb53478:~/code# docker container commit hw_container hw_image
+sha256:48b5ccf0a7664e7c9172845145a55a8426b5f4c0da3ff4f53ce7cba06d6f7938
+```
+
+```bash
+root@e3a09282cfb53478:~/code# docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+hw_image     latest    48b5ccf0a766   17 seconds ago   78.1MB
+ubuntu       latest    a04dc4851cbc   2 months ago     78.1MB
+root@e3a09282cfb53478:~/code# 
+```
+
+We can see the newly created image `hw_image`.
+
+### 3. **Remove the modified container:**
+
+Let's delete the existing container:
+```sh
+docker container rm -vf hw_container
+```
+
+### 4. **Create new Container from the new Image:**
+
+Let's create a new container from the new image that we have created and enter the bash in the new container:
+```sh
+docker run -it --name new_hw_container hw_image /bin/bash
+```
+
+Use the following comand to see the files:
+
+```bash
+ls
+```
+
+Expected output:
+
+```bash
+root@e3a09282cfb53478:~/code# docker run -it --name new_hw_container hw_image /bin/bash
+
+root@1bf71ab3cdf4:/# ls
+HelloWorld.txt  boot  etc   lib    media  opt   root  sbin  sys  usr
+bin             dev   home  lib64  mnt    proc  run   srv   tmp  var
+root@1bf71ab3cdf4:/# 
+```
+
+We can see the `HelloWorld.txt` in this container from our new image!
+
+This output confirms that the file `HelloWorld` was successfully created in the new image, demonstrating that the modifications made in the original container were correctly committed to the new image.
+
+
+### Cleanup
+
+Remove the container and image:
+
+```bash
+docker rm  new_hw_container
+docker rmi hw_image
+```
+
+
+## Conclusion
+
+In this lab, we have successfully demonstrated how to create a Docker container, modify its contents, commit those changes to create a new image, and then run a new container from that image. This process is fundamental in Docker workflows, allowing for the creation of reproducible environments and consistent application deployment. By following these steps, you can ensure that your containerized applications are built and deployed with the desired configurations and modifications. This lab reinforces the importance of understanding Docker's capabilities in managing container lifecycles and image creation.
+
+# Create and Commit an Ubuntu Container with Git Installed
+
+This session will guide us through creating an `Ubuntu` container, installing `Git`, and committing the changes to a `new image`. Additionally, we'll learn how to set an `entrypoint` to make using the image more efficient.
+
+## Task
+
+We will perform the following steps:
+1. Create an `ubuntu` container and open a `bash` session.
+2. Install `git` inside the container and verify the git.
+3. Create new `image` by using `commit`.
+4. Set the `entrypoint` for the new image to make it easier to use.
+
+## Simple Explanation of the Process
+In this lab, we will start by creating a container from the `Ubuntu` image and open a `bash` session within it. Inside this container, we will install `git` and verify that the installation was successful by checking the git `version`. After exiting the container, we will commit these changes to create a new Docker image that includes `git`. We will run a container from that image.
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2021/images/image.png?raw=true)
+
+Finally, we will set an `entrypoint` for this new image to make it easier to use git directly without needing to specify the git command each time we start a container from this image.
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2021/images/image-1.png?raw=true)
+
+
+
+## Step-By-Step Solution
+
+### 1. **Create an Ubuntu container and open a bash session:**
+```sh
+docker run -it --name image-dev ubuntu:latest /bin/bash
+```
+This command creates a new container named `image-dev` from the `ubuntu:latest` image and opens an interactive bash session.
+
+### 2. **Install Git inside the container:**
+```sh
+apt-get update
+apt-get install -y git
+```
+This updates the package list and installs Git in the container.
+
+### 3. **Verify the Git installation by checking its version:**
+```sh
+git --version
+```
+Expected output:
+```bash
+root@09d80252b74e:/# git --version
+git version 2.43.0
+root@09d80252b74e:/# 
+```
+This command confirms that Git was installed correctly.
+
+### 4. **Exit the container:**
+```sh
+exit
+```
+This command exits the interactive bash session and returns to the host terminal.
+
+### 5. **Review the filesystem changes and commit these changes to create a new image:**
+```sh
+docker container commit -a "@poridhi" -m "Added git" image-dev ubuntu-git
+```
+This command commits the changes made in the `image-dev` container to a new image named `ubuntu-git` with an author tag and a commit message.
+
+### 6. **Remove the modified container:**
+```sh
+docker container rm -vf image-dev
+```
+This command forcefully removes the `image-dev` container to clean up.
+
+### 7. **Verify the new image by checking the Git version in a new container:**
+
+```sh
+docker container run --rm ubuntu-git git --version
+```
+This command runs a temporary container from the `ubuntu-git` image to verify that Git is installed correctly.
+
+Expected Output:
+
+```bash
+root@e3a09282cfb53478:~/code# docker container run --rm ubuntu-git git --version
+git version 2.43.0
+root@e3a09282cfb53478:~/code# 
+```
+
+## Setting the Entrypoint to Git
+
+### 1. **Create a new container with the entrypoint set to Git:**
+```sh
+docker container run --name cmd-git --entrypoint git ubuntu-git
+```
+This command creates a new container named `cmd-git` with the entrypoint set to `git`, showing the standard Git help and exiting.
+
+### 2. **Commit the new image with the entrypoint:**
+```sh
+docker container commit -m "Set CMD git" -a "@poridhi" cmd-git ubuntu-git
+```
+This command commits the changes made in the `cmd-git` container to the `ubuntu-git` image. By doing so, it sets the entrypoint of the `ubuntu-git` image to the `git` command. This means that any container started from this image will automatically use `git` as its default command, simplifying the process of running Git commands within the container.
+
+### 3. **Remove the modified container:**
+```sh
+docker container rm -vf cmd-git
+```
+This command forcefully removes the `cmd-git` container to clean up.
+
+### 4. **Test the new image:**
+```sh
+docker container run --name cmd-git ubuntu-git version
+```
+This command runs a new container from the `ubuntu-git` image, verifying that the entrypoint is set correctly and showing the Git version:
+```sh
+git version 2.43.0
+```
+
+This setup ensures that any container started from the `ubuntu-git` image will automatically use Git as the entrypoint, making it easier for users to work with Git directly.
+
+
+
+## Conclusion
+
+In this lab, we have successfully demonstrated how to create a Docker container, install Git, commit the changes to create a new image, and set an entrypoint for the image. By following these steps, you can streamline the process of using Git within Docker containers, making it more efficient and user-friendly. This lab reinforces the importance of understanding Docker's capabilities in managing container lifecycles and customizing images to suit specific needs.
+
+
+
+---
+
+# CI/CD Process Using a Git-Entrypoint Container
+
+*(with every flag explained in context)*
+
+## Goal of the pipeline
+
+Before building or deploying code, the pipeline must:
+
+1. Access the source code
+2. Verify the repository is clean
+3. Determine the version from Git tags
+4. Fail early if anything is wrong
+
+All of this is done **without installing Git on the CI machine**.
+
+---
+
+## Step 1: Make the source code available to the container
+
+### Command
+
+```sh
+docker run --rm \
+  -v "$PWD:/repo" \
+  -w /repo \
+  ubuntu-git status
+```
+
+### What happens
+
+| Part              | Meaning                                             |
+| ----------------- | --------------------------------------------------- |
+| `docker run`      | Start a temporary container                         |
+| `--rm`            | Delete the container after it finishes              |
+| `-v "$PWD:/repo"` | Share the current project folder with the container |
+| `-w /repo`        | Run commands inside the shared folder               |
+| `ubuntu-git`      | Image whose ENTRYPOINT is `git`                     |
+| `status`          | Run `git status`                                    |
+
+### In plain words
+
+> “Run Git inside a container, using my current project directory.”
+
+Without `-v`, Git would see **no files**.
+Without `-w`, Git would run in `/` and fail.
+
+---
+
+## Step 2: Ensure there are no uncommitted changes
+
+### Command
+
+```sh
+docker run --rm \
+  -v "$PWD:/repo" \
+  -w /repo \
+  ubuntu-git status --porcelain
+```
+
+### Why `--porcelain` is used
+
+| Flag          | Purpose                          |
+| ------------- | -------------------------------- |
+| `status`      | Check working tree state         |
+| `--porcelain` | Output in script-friendly format |
+
+### CI logic
+
+* If output is **empty** → repository is clean
+* If output has **any lines** → fail the pipeline
+
+### Why CI cares
+
+CI/CD must build **only committed code**.
+Uncommitted files mean the build is not reproducible.
+
+---
+
+## Step 3: Generate a version string from Git
+
+### Command
+
+```sh
+docker run --rm \
+  -v "$PWD:/repo" \
+  -w /repo \
+  ubuntu-git describe --tags --dirty
+```
+
+### Explanation of each part
+
+| Element    | Purpose                                   |
+| ---------- | ----------------------------------------- |
+| `describe` | Generate a version from Git history       |
+| `--tags`   | Use Git tags                              |
+| `--dirty`  | Mark version if uncommitted changes exist |
+
+### Example outputs
+
+Clean repo:
+
+```text
+v1.2.3
+```
+
+Dirty repo:
+
+```text
+v1.2.3-dirty
+```
+
+### Why this matters in CI/CD
+
+* Prevents releasing code that differs from Git history
+* Makes builds traceable to commits
+
+---
+
+## Step 4: Extract only the release version (tag)
+
+### Command
+
+```sh
+docker run --rm \
+  -v "$PWD:/repo" \
+  -w /repo \
+  ubuntu-git describe --tags --abbrev=0
+```
+
+### Why `--abbrev=0`
+
+| Flag         | Purpose                      |
+| ------------ | ---------------------------- |
+| `--abbrev=0` | Output **only the tag name** |
+
+### Example output
+
+```text
+v1.2.3
+```
+
+This value is commonly used for:
+
+* Docker image tags
+* Release names
+* Deployment versions
+
+---
+
+## Step 5: Use the version in the build
+
+### Example CI logic
+
+```sh
+VERSION=$(docker run --rm \
+  -v "$PWD:/repo" \
+  -w /repo \
+  ubuntu-git describe --tags --abbrev=0)
+
+docker build -t my-app:$VERSION .
+```
+
+### What this achieves
+
+* Version comes directly from Git
+* No manual versioning
+* Every build is traceable
+
+---
+
+## Why ENTRYPOINT = `git` matters here
+
+Because the image behaves like the Git binary:
+
+```sh
+ubuntu-git describe --tags
+```
+
+instead of:
+
+```sh
+ubuntu-git git describe --tags
+```
+
+This:
+
+* Reduces mistakes
+* Improves readability
+* Makes the container a **single-purpose tool**
+
+---
+
+## Final mental model
+
+Think of this as:
+
+> “I am running Git, but Git happens to live inside a container.”
+
+Not:
+
+> “I am running a Linux system.”
+
+---
