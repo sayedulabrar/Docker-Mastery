@@ -3171,3 +3171,1353 @@ Not:
 > “I am running a Linux system.”
 
 ---
+
+
+
+
+
+# Reviewing Filesystem Changes in Docker
+
+Docker lets you track filesystem changes inside containers using the `docker container diff` command. Changes can be **added (A), changed (C), or deleted (D)**.
+
+### Key Concepts
+
+* **Union filesystem (UFS):** Files are read from the topmost layer where they exist.
+* **Copy-on-write:** Modifying a file in a read-only layer copies it to the writable layer first.
+
+### Tasks & Commands
+
+1. **Add a file:**
+
+```sh
+docker container run --name tweak-a busybox:latest touch /HelloWorld
+docker container diff tweak-a
+# Output: A /HelloWorld
+```
+
+2. **Delete a file:**
+
+```sh
+docker container run --name tweak-d busybox:latest rm /bin/vi
+docker container diff tweak-d
+# Output: C /bin
+#         D /bin/vi
+```
+
+3. **Change a file:**
+
+```sh
+docker container run --name tweak-c busybox:latest touch /bin/vi
+docker container diff tweak-c
+# Output: C /bin
+#         C /bin/vi
+```
+
+4. **Clean up containers:**
+
+```sh
+docker container rm -vf tweak-a tweak-d tweak-c
+```
+
+**Summary:** `docker container diff` shows changes to the filesystem, helping debug and manage containerized applications effectively.
+
+---
+
+
+# Modifying Docker Image Attributes
+
+This lab aims to deepen your understanding of Docker image attributes and how they can be modified and inherited across different layers of an image. 
+
+By the end of this exercise, you will be familiar with setting environment variables, working directories, exposed ports, volume definitions, container entrypoints, and commands.
+
+
+When you use docker container commit, you create a new layer for an image. This layer includes not only a snapshot of the filesystem but also metadata about the execution context. The following parameters, if set for a container, will be carried forward to the new image:
+
+- Environment variables
+- Working directory
+- Exposed ports
+- Volume definitions
+- Container entrypoint
+- Command and arguments
+
+If these parameters are not explicitly set, they will be inherited from the original image.
+
+This lab will provide you with hands-on experience in modifying these attributes and observing how they are inherited across image layers.
+
+## Task Description
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2023/images/image.png?raw=true)
+
+
+**Create a Container with Environment Variables**
+- Run a Docker container from the `busybox:latest` image, setting two environment variables.
+- Commit the running container to a new image.
+
+**Modify the Entrypoint and Command**
+- Run a new container from the previously committed image, setting a new entrypoint and command.
+- Commit this container to update the image.
+
+**Verify Inheritance of Attributes**
+- Run a container from the final image without specifying any command or entrypoint to verify that the environment variables and the entrypoint/command are inherited correctly.
+
+
+
+## Solution Steps
+
+### **Create a Container with Environment Variables**
+
+- Run the container:
+    ```bash
+    docker run --name container1 -e ENV_EXAMPLE1=value1 -e ENV_EXAMPLE2=value2 busybox:latest
+    ```
+
+    This command creates a new container named `container1` from the `busybox:latest` image and sets two environment variables, `ENV_EXAMPLE1` and `ENV_EXAMPLE2`.
+
+    Expected output:
+
+    ```
+    term@ubuntu-x1brs3-5444b5f5fc-j5xpq:~$ docker run --name container1 -e ENV_EXAMPLE1=value1 -e ENV_EXAMPLE2=value2 busybox:latest
+
+    Unable to find image 'busybox:latest' locally
+    latest: Pulling from library/busybox
+    ec562eabd705: Pull complete 
+    Digest: sha256:9ae97d36d26566ff84e8893c64a6dc4fe8ca6d1144bf5b87b2b85a32def253c7
+    Status: Downloaded newer image for busybox:latest
+    ```
+
+- Commit the container to a new image:
+    ```bash
+    docker commit container1 new-image
+    ```
+
+    This command commits the `container1` container to a new image named `new-image`.
+
+    Varify the image creation using the following command:
+
+    ```bash
+    docker images
+    ```
+
+    Expected output:
+
+    ```bash
+    root@e3a09282cfb53478:~/code# docker images
+    REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+    new-image    latest    24811125c10b   34 seconds ago   4.28MB
+    busybox      latest    ff7a7936e930   6 months ago     4.28MB
+    root@e3a09282cfb53478:~/code# 
+    ```
+
+
+### **Modify the Entrypoint and Command**
+
+- Run a new container with a specific entrypoint and command:
+    ```bash
+    docker run --name container2 --entrypoint "/bin/sh" new-image -c "echo \$ENV_EXAMPLE1 \$ENV_EXAMPLE2"
+    ```
+
+    This command runs a new container named `container2` from the `new-image` image, setting the entrypoint to `/bin/sh` and the command to `-c "echo \$ENV_EXAMPLE1 \$ENV_EXAMPLE2"`. This setup will print the values of the environment variables.
+
+    Expected output:
+
+    ```bash
+    root@e3a09282cfb53478:~/code# docker run --name container2 --entrypoint "/bin/sh" new-image -c "echo \$ENV_EXAMPLE1 \$ENV_EXAMPLE2"
+    value1 value2
+    root@e3a09282cfb53478:~/code# 
+    ```
+
+
+- Commit this container to update the image:
+    ```bash
+    docker commit container2 new-image
+    ```
+    This will commit the container `container2` to the `new-image` image, updating the image with the new entrypoint and command. The updated image will have the entrypoint and the command with it.
+
+- Verify the new image's entrypoint and command settings:
+    ```bash
+    docker inspect --format '{{ .Config.Entrypoint }}' new-image
+
+    docker inspect --format '{{ .Config.Cmd }}' new-image
+    ```
+
+    Expected output:
+
+    ```bash
+    root@e3a09282cfb53478:~/code# docker inspect --format '{{ .Config.Entrypoint }}' new-image
+
+    [/bin/sh]
+
+    root@e3a09282cfb53478:~/code# docker inspect --format '{{ .Config.Cmd }}' new-image
+
+    [-c echo $ENV_EXAMPLE1 $ENV_EXAMPLE2]
+    ```
+
+### **Verify Inheritance of Attributes**
+
+- Run a container from the final image to verify the inherited behavior:
+    ```bash
+    docker run --rm new-image
+    ```
+
+    This command runs a container from the final `new-image` image, verifying that the environment variables and the entrypoint/command are inherited correctly. 
+
+    Expected output:
+
+    ```bash
+    root@e3a09282cfb53478:~/code# docker run --rm new-image
+    value1 value2
+    root@e3a09282cfb53478:~/code#
+    ```
+
+
+## Conclusion
+
+By completing this lab, we hope, you have a practical understanding of how to modify and verify Docker image attributes, and how these changes are inherited across image layers.
+
+# Exploring Docker Image Layers and Size Management
+
+Docker images are built from layers, where each layer represents a set of filesystem changes. The size of an image on disk is the sum of the sizes of its component layers. Docker allows you to commit changes to a running container, creating new image layers. 
+
+This lab will guide you through these concepts with hands-on practices, focusing on creating and modifying a Docker image with ubuntu as the base image. You will install and remove software within containers, observe the changes in image sizes, and understand the impact of Docker's Union File System (UFS) on image size. 
+
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2024/images/image.png?raw=true)
+
+## Task Description
+
+### Building and Modifying Docker Images
+
+Here, you will create a Docker image from the official Ubuntu image, install Git within a container, and commit the changes to create a new image. You will then modify this image by removing Git and observe how Docker manages image layers and size. 
+
+## Step-By-Step Solution
+
+### **Pull the Ubuntu Image:**
+
+Pull the `ubuntu` image from Docker Hub.
+```sh
+docker pull ubuntu
+```
+This command fetches the latest `ubuntu` image from Docker Hub and stores it in your local Docker repository.
+
+### **Create a Container and Install Git:**
+
+Create a container from the `ubuntu` image and install Git.
+```sh
+docker run -d --name ubuntu-git-container ubuntu sleep infinity
+docker exec -it ubuntu-git-container apt-get update
+docker exec -it ubuntu-git-container apt-get install -y git
+```
+These commands run a container named `ubuntu-git-container` from the `ubuntu` image and install Git inside the container. The `sleep infinity` command keeps the container running. The `apt-get update` and `apt-get install -y git` commands update the package list and install Git, respectively.
+
+### **Commit the Changes to Create a New Image:**
+
+Commit the container to create a new image with Git installed.
+```sh
+docker commit ubuntu-git-container ubuntu-git:1.0
+docker tag ubuntu-git:1.0 ubuntu-git:latest
+```
+These commands commit the current state of the `ubuntu-git-container` container to a new image named `ubuntu-git` with a tag `1.0`, and then tag this image as `latest`.
+
+
+### **Check Image Sizes:**
+
+Check the sizes of all the images created.
+```sh
+docker images
+```
+
+Expected output:
+
+```bash
+root@e3a09282cfb53478:~/code# docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+ubuntu-git   1.0       193ae1feaeea   6 seconds ago    125MB
+ubuntu-git   latest    193ae1feaeea   6 seconds ago    125MB
+ubuntu       latest    a04dc4851cbc   2 months ago     78.1MB
+root@e3a09282cfb53478:~/code# 
+```
+
+### **Remove Git:**
+
+Create a new container from the `ubuntu-git` image and remove Git.
+```sh
+docker run --name ubuntu-git-remove --entrypoint /bin/bash ubuntu-git:latest -c "apt-get remove -y git"
+```
+This command runs a container named `ubuntu-git-remove` from the `ubuntu-git:latest` image with an entrypoint set to `/bin/bash`, and removes Git from the container.
+
+### **Commit the Changes to Create a New Image with Git Removed:**
+
+Commit the container to create a new image with Git removed.
+```sh
+docker commit ubuntu-git-remove ubuntu-git:2.0
+docker tag ubuntu-git:2.0 ubuntu-git:latest
+```
+These commands commit the current state of the `ubuntu-git-remove` container to a new image named `ubuntu-git:removed` and reassign the `latest` tag to this new image.
+
+
+### **Check Image Sizes:**
+
+Check the sizes of all the images created.
+```sh
+docker images
+```
+
+Expected output:
+
+```bash
+root@e3a09282cfb53478:~/code# docker images
+REPOSITORY   TAG       IMAGE ID       CREATED              SIZE
+ubuntu-git   2.0       8a9686de5a78   9 seconds ago        125MB
+ubuntu-git   latest    8a9686de5a78   9 seconds ago        125MB
+ubuntu-git   1.0       193ae1feaeea   About a minute ago   125MB
+ubuntu       latest    a04dc4851cbc   2 months ago         78.1MB
+root@e3a09282cfb53478:~/code#
+```
+
+
+
+Notice that even though you removed Git, the image actually same in size.
+ Although you could examine the specific changes with `docker diff`, you should be
+ quick to realize that the reason for the increase has to do with the union file system.
+
+ Remember, UFS will mark a file as deleted by actually adding a file to the top layer.
+ The original file and any copies that existed in other layers will still be present in the
+ image.  When a file is deleted, a delete record is written to the top layer, which overshadows
+ any versions of that file on lower layers.
+ 
+ Itâ€™s important to minimize image size for the sake of the people and systems
+ that will be consuming your images. If you can avoid causing long download times and
+ significant disk usage with smart image creation, then your consumers will benefit.
+
+
+
+ # A Deeper Look into Node.js Docker Images
+
+Node.js Docker images come in various flavours, each tailored for specific use cases. Picking the right image for your application can be challenging, as it involves balancing factors such as size, security vulnerabilities, and functionality. This document explores the differences among popular Node.js Docker images, highlighting their pros and cons to help developers make informed choices.
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2029/images/banner%20.svg)
+
+## Objective
+
+This documentation aims to:
+
+- Compare various Node.js Docker image variants.
+- Analyse their composition and intended use cases.
+- Provide recommendations for choosing the right image based on development and production needs.
+
+
+## Table of Contents
+
+- [Node.js Releases and Selection Criteria](#nodejs-releases-and-selection-criteria)
+- [Basic Comparison of Available Images](#basic-comparison-of-available-images)
+- [Overview of Each Image](#overview-of-each-image)
+  - [Official Docker Images](#official-docker-images)
+  - [Bitnami Images](#bitnami-images)
+  - [GoogleContainerTools Distroless](#googlecontainertools-distroless)
+  - [Chainguardâ€™s Distroless](#chainguards-distroless)
+- [Conclusion and Recommendations](#conclusion-and-recommendations)
+
+
+## Node.js Releases and Selection Criteria
+
+Node.js recommends using Active LTS or Maintenance LTS releases for production applications. Active LTS versions are considered stable and ready for general use, while Maintenance LTS ensures critical bug fixes for an extended period.
+
+![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2029/images/image.png)
+
+###  Release Lifecycle
+
+- **Current Release:** Supported for six months after release, intended for library authors and early adopters.
+
+- **Active LTS:** Stable and reliable, with extended support for 30 months. Suitable for production.
+
+- **Maintenance LTS:** Focused on critical fixes, suitable for older but still functional production environments.
+
+
+## Basic Comparison of Available Images
+
+### Official Docker Images
+
+In the official Node.js Docker images, the `node` tag is used to specify the version of Node.js. The `node` tag is followed by the version number, which corresponds to the Node.js release. Here are some examples:
+
+```bash
+docker pull node:22
+docker pull node:22-slim
+docker pull node:22-alpine
+```
+
+### Bitnami Images
+
+Bitnami repacks the Node.js binary with additional dependencies and tools. 
+
+```bash
+docker pull bitnami/node:22
+```
+
+### GoogleContainerTools Distroless
+
+GoogleContainerTools Distroless images are minimalistic images that only contain the Node.js binary and its dependencies. They are designed to be used in production environments where security and size are critical.
+
+```bash
+docker pull gcr.io/distroless/nodejs22-debian12
+```
+
+### Chainguardâ€™s Distroless
+
+Chainguardâ€™s Distroless images are similar to GoogleContainerTools Distroless images, but they are built on top of the Chainguard base image.
+
+```bash
+docker pull cgr.dev/chainguard/node:latest
+```
+
+Simply listing the pulled images can already give us some initial food for thought:
+
+```bash
+docker images
+```
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2029/images/image-2.png)
+
+If we observe the images, we can see that the `node:22` image is the largest image with `1.2GB` in size, followed by lower size image `gcr.io/distroless/nodejs22-debian12` with `143MB` in size.
+
+## Overview of Each Images
+
+### `node:22`
+
+If we look at the `node:22` image, we can see that it is the largest image of the lot. It is 1.2GB in size. It has a full-fledged Python installation inside.
+
+If we run the following command, we can see that the Python installation is indeed present.
+
+```bash
+docker run --entrypoint bash node:22 -c 'python3 --version'
+```
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2029/images/image-3.png)
+
+Interesting is that Python is not the only "unexpected" package in this image - for instance, this image also includes the entire GNU Compiler Collection:
+
+```bash
+docker run --entrypoint bash node:22 -c 'gcc --version'
+```
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2029/images/image-4.png)
+
+If we inspect the package list, we can see that the `node:22` image includes a variety of packages
+
+```bash
+# Download latest release
+curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+syft node:22
+```
+![alt text](https://github.com/poridhiEng/lab-asset/blob/main/Docker%20Labs/Lab%2029/images/images-5.png?raw=true)
+
+And, of course, with so many packages comes with lot of CVEs. `CVEs` are a list of security vulnerabilities that have been discovered in the software.
+
+```bash
+trivy image -q node:22
+```
+
+All the packages are not always necessary for the Node.js application to run. That is why we have the `node:22-slim` and `node:22-alpine` images.
+
+### Why `node:22` has so many bloated packages?
+
+The `node:<version>` image has so many bloated packages because it is based on `buildpack-deps`, which includes a wide range of commonly used `Debian` packages. These packages are included to support various development needs, such as `Python`, `GCC`, and other tools required for building or compiling software. While this design reduces the need to install additional packages in derived images, it significantly increases the size of the base image, making it less suitable for lightweight production environments.
+
+
+
+
+# **Extracting Container Image Filesystem Using Docker**
+
+In this lab,  we will learn how to extract the filesystem of a Docker container image using different methods and understand their trade-offs.
+
+![](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2030/images/1.svg)
+
+
+
+## **Prerequisites**
+- Docker installed on your system (version 18.09+ recommended).
+- Basic understanding of Docker commands.
+- A Linux-based operating system or Docker Desktop.
+- Access to the internet to pull Docker images.
+
+
+
+## **Lab Steps**
+
+### **1. Setting Up**
+1. Verify your Docker installation:
+   ```bash
+   docker --version
+   ```
+2. Pull the target container image:
+   ```bash
+   docker pull nginx:alpine
+   ```
+
+
+
+### **2. Method 1: Using `docker save`**
+
+`docker save` produces a tarball containing image layers and metadata but not a complete filesystem. This method is ideal for transferring or archiving images.
+
+1. Use the `docker save` command to export the image:
+   ```bash
+   docker save nginx:alpine -o nginx_alpine.tar
+   ```
+2. Extract the `.tar` file:
+    ```bash
+    mkdir image_layers
+    tar -xf nginx_alpine.tar -C image_layers
+    ```
+3. Explore the extracted layers:
+   ```bash
+   ls -l image_layers
+   ```
+
+    ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2030/images/image.png)
+
+
+
+
+### **3. Method 2: Using `docker export`**
+
+`docker export` extracts the filesystem of a container in its current state, excluding Docker-specific metadata (e.g., image layers). It's useful for obtaining a clean snapshot of the container's filesystem.
+
+1. Start a container:
+   ```bash
+   CONT_ID=$(docker run -d nginx:alpine)
+   ```
+2. Export the filesystem:
+   ```bash
+   docker export ${CONT_ID} -o nginx_fs.tar.gz
+   ```
+3. Extract the `.tar` file:
+   ```bash
+    mkdir nginx_rootfs
+    tar -xf nginx_fs.tar.gz -C nginx_rootfs
+   ```
+4. Explore the filesystem:
+   ```bash
+   ls -l nginx_rootfs
+   ```
+
+    ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2030/images/image-1.png)
+
+    Tip: Stop and remove the container after this step:
+
+    ```bash
+    docker rm -f ${CONT_ID}    
+    ```
+
+
+
+
+### **4. Method 3: Using `docker create + docker export`**
+
+Using `docker create` avoids starting the container, creating a lightweight placeholder for exporting its filesystem. This method is useful when you don't need to execute any processes within the container.
+
+1. Create a container without starting it:
+   ```bash
+   CONT_ID=$(docker create nginx:alpine)
+   ```
+2. Export the filesystem:
+   ```bash
+   docker export ${CONT_ID} -o nginx_fs.tar.gz
+   ```
+3. Extract the `.tar` file:
+   ```bash
+    mkdir nginx_rootfs
+    tar -xf nginx_fs.tar.gz -C nginx_rootfs
+   ```
+4. Explore the filesystem:
+   ```bash
+   ls -l nginx_rootfs
+   ```
+
+    ![alt text](https://raw.githubusercontent.com/poridhiEng/lab-asset/488790ccc4e286fab4b9defc335d0193889d4c8b/Docker%20Labs/Lab%2030/images/image-2.png)
+
+5. **Cleanup:**
+   ```bash
+   docker rm ${CONT_ID}
+   ```
+6. **Observation:** This method avoids starting a container, preserving the original filesystem structure.
+
+
+
+
+
+
+### **5. Method 4: Using `ctr image mount`**
+
+`containerd` is the runtime underlying Docker. Using `ctr`, you can directly mount image layers as a unified filesystem. This is efficient for temporary exploration without exporting.
+
+
+
+1. Install `ctr` (containerd CLI) if not already installed.
+2. Pull the image using `ctr`:
+   ```bash
+   sudo ctr image pull docker.io/library/nginx:alpine
+   ```
+3. Mount the image filesystem:
+   ```bash
+   mkdir nginx_rootfs
+   sudo ctr image mount docker.io/library/nginx:alpine nginx_rootfs
+   ```
+4. Explore the filesystem:
+   ```bash
+   ls -l nginx_rootfs
+   ```
+5. **Cleanup:**
+   ```bash
+   sudo umount ginx_rootfs
+   ```
+
+
+
+## **Comparison of Methods**
+| Method                    | Pros                                    | Cons                                      |
+|---------------------------|-----------------------------------------|-------------------------------------------|
+| `docker save`             | Simple to use                          | Exports layers, not the final filesystem. |
+| `docker export`           | Exports filesystem of a running container | Requires starting a container.           |
+| `docker create + export`  | Avoids running a container              | Some small artifacts may still exist.    |
+| `docker build -o`         | Accurate filesystem representation     | Requires BuildKit and might lose ownership metadata. |
+| `ctr image mount`         | Artifact-free filesystem export         | Requires containerd and additional setup.|
+
+
+## **Conclusion**
+In this lab, you explored multiple methods to extract the filesystem of a Docker image. Each method has its use case, and the choice depends on your requirements for accuracy, speed, and security.
+
+
+
+---
+
+# Containerizing a Node.js App (Short Version)
+
+### 1. Containerization
+
+* Packages app + dependencies into a **portable container**.
+* Ensures **consistency** across environments.
+
+### 2. Dockerfile Basics
+
+* Text file with instructions to build a Docker image.
+* Each instruction creates a **layer** that can be cached.
+
+### 3. Example Node.js App
+
+```javascript
+const http = require('http');
+const hostname = '0.0.0.0', port = 8000;
+const server = http.createServer((req, res) => {
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'text/plain');
+  res.end('Hello, World!\n');
+});
+server.listen(port, hostname);
+```
+
+### 4. Dockerfile
+
+```dockerfile
+FROM node:14-alpine
+WORKDIR /usr/src/app
+COPY app.js .
+RUN npm install http@0.0.1-security
+EXPOSE 8000
+CMD ["node", "app.js"]
+```
+
+* `WORKDIR` sets the **container path**, not relative to host.
+* `COPY` copies app files to container.
+* `EXPOSE` defines the app port.
+* `CMD` starts the app.
+
+### 5. Build & Run
+
+```bash
+docker build -t my-node-app:1.0 .
+docker run -d --name my-node-app-container -p 80:8000 my-node-app:1.0
+```
+
+* `-t` tags the image (`name:tag`).
+* `-p host:container` maps ports.
+* `-d` runs in background.
+
+### 6. Optional: Push to Docker Hub
+
+```bash
+docker tag my-node-app:1.0 your-docker-id/my-node-app:1.0
+docker push your-docker-id/my-node-app:1.0
+```
+
+### 7. Docker Layers
+
+* Each Dockerfile instruction is a layer.
+* Layers are cached; changes to later layers **don’t rebuild earlier ones**.
+
+### 8. Multi-Stage Build (Optional for Optimization)
+
+```dockerfile
+# Stage 1: Build
+FROM node:14 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build   # produces /app/dist
+
+# Stage 2: Production
+FROM node:14-alpine
+WORKDIR /app
+COPY --from=builder /app/dist .   # only copy build output
+CMD ["node", "app.js"] 
+
+```
+
+* Useful if **build tools/dependencies** can be discarded in final image.
+* Reduces image size for production.
+
+### Key Takeaways
+
+* Multi-stage builds **help reduce image size** if build tools are heavy.
+* For small apps with minimal dependencies, single-stage is enough.
+* Always use **absolute paths** for `WORKDIR` inside containers.
+* Use `-t` to **tag images**, `:` separates name and version.
+
+---
+
+ 
+
+
+---
+
+## Lab Overview
+
+In this lab, you will:
+
+* Understand core Docker Compose concepts such as **services**, **networks**, and **volumes**
+* Build and deploy a **multi-container Flask + Redis application**
+* Verify application functionality
+* Interact with common Docker Compose commands
+* Clean up Docker resources after use
+
+---
+
+## Key Concepts
+
+Before starting the hands-on section, review the main components you will work with.
+
+### Services
+
+A **service** in Docker Compose defines how a container is built and run. Services can be created from a Dockerfile or pulled from an existing image. Each service runs in its own container.
+
+### Networks
+
+Docker Compose automatically creates a default network that allows services to communicate using service names. You can define custom networks to explicitly control communication between services.
+
+### Volumes
+
+**Volumes** provide persistent storage. Data stored in a volume remains available even if containers are stopped or removed, making volumes suitable for data that must be preserved.
+
+---
+
+## Hands-On: Deploy a Multi-Container Application with Docker Compose
+
+### Step 1: Set Up the Project Structure
+
+Create a new directory for the project:
+
+```bash
+mkdir multi-container
+cd multi-container
+```
+
+This directory will contain all application and configuration files.
+
+---
+
+### Step 2: Create the Flask Application (`app.py`)
+
+Create a file named `app.py` inside the `multi-container` directory:
+
+```python
+from flask import Flask
+from redis import Redis
+
+app = Flask(__name__)
+redis = Redis(host='redis', port=6379)
+
+@app.route('/')
+def hello():
+    count = redis.incr('hits')
+    return f'Hello World! This page has been visited {count} times.\n'
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
+```
+
+This application uses Redis to track how many times the root URL (`/`) has been accessed. Flask serves the application on port `8000`.
+
+---
+
+### Step 3: Create the Dockerfile
+
+Create a file named `Dockerfile` in the same directory:
+
+```dockerfile
+FROM python:3.9-alpine
+WORKDIR /app
+COPY . /app
+RUN pip install flask redis
+EXPOSE 8000
+CMD ["python", "app.py"]
+```
+
+This Dockerfile:
+
+* Uses a lightweight Python base image
+* Sets `/app` as the working directory
+* Copies application files into the container
+* Installs required Python packages
+* Exposes port `8000`
+* Starts the Flask application
+
+---
+
+### Step 4: Create the Docker Compose File (`docker-compose.yml`)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: "3.8"
+
+services:
+  web-fe:
+    build: .
+    command: python app.py
+    ports:
+      - target: 8000
+        published: 5001
+    networks:
+      - counter-net
+    volumes:
+      - type: volume
+        source: counter-vol
+        target: /app
+
+  redis:
+    image: redis:alpine
+    networks:
+      - counter-net
+
+networks:
+  counter-net:
+
+volumes:
+  counter-vol:
+```
+
+#### What this configuration does
+
+**web-fe (Flask application):**
+
+* Built from the current directory
+* Accessible on `localhost:5001`
+* Connected to a custom network (`counter-net`)
+* Uses a persistent volume (`counter-vol`)
+
+**redis:**
+
+* Uses the official Redis Alpine image
+* Connected to the same network as the Flask service
+
+---
+
+### Step 5: Deploy the Application
+
+Build and start the application in detached mode:
+
+```bash
+docker-compose up -d
+```
+
+This command:
+
+* Creates the custom network and volume
+* Builds the Flask image
+* Starts both containers in the background
+
+---
+
+### Step 6: Verify the Deployment
+
+#### Check Running Services
+
+```bash
+docker-compose ps
+```
+
+You should see both `web-fe` and `redis` running.
+
+#### View Application Logs
+
+```bash
+docker-compose logs
+```
+
+Check for successful startup messages or errors.
+
+#### Access the Application
+
+Open port `5001` from Poridhi’s VS Code environment or test using `curl`:
+
+```bash
+curl localhost:5001
+```
+
+You should see a response indicating how many times the page has been visited. Repeating the request will increment the count.
+
+---
+
+### Step 7: Inspect the Running Containers
+
+View the processes running inside each container:
+
+```bash
+docker-compose top
+```
+
+---
+
+### Step 8: Verify Volumes and Networks
+
+List Docker volumes:
+
+```bash
+docker volume ls
+```
+
+List Docker networks:
+
+```bash
+docker network ls
+```
+
+You should see `counter-vol` and `counter-net` in the output.
+
+---
+
+## Cleanup
+
+When you are finished, remove all resources created by Docker Compose:
+
+```bash
+docker-compose down --volumes
+```
+
+This command stops and removes the containers, deletes the network, and removes the volume.
+
+---
+
+
+
+---
+
+## 1. How Docker handles **named volumes** when mounted over a container path
+
+When you declare:
+
+```yaml
+volumes:
+  - counter-vol:/app
+```
+
+Docker does the following **at container startup**:
+
+1. It checks if `counter-vol` exists:
+
+   * **If it exists:** it simply mounts the volume over `/app`.
+   * **If it does not exist:** it **initializes the volume**.
+
+2. **Important:** Initialization **does not automatically copy the image contents** into the volume unless you use `docker cp` or a similar mechanism.
+
+   * This is a key difference between **named volumes** and **bind mounts**.
+   * Named volumes are empty by default when first created, so `/app` from the image becomes hidden because the volume is mounted on top of it.
+
+---
+
+## 2. Why the Flask code becomes “invisible”
+
+* Your Dockerfile put `app.py` in `/app`.
+
+* When you mount a **new named volume** at `/app`, Docker overlays it.
+
+* Docker does **not** copy `/app` contents into `counter-vol` automatically.
+
+* Therefore, at first container startup:
+
+  ```
+  /app inside container = empty (volume)
+  ```
+
+* Only data **written after container starts** will persist in `counter-vol`.
+
+This is why I said the code becomes invisible — it’s literally **hidden behind the empty volume**.
+
+---
+
+## 3. Contrast with databases
+
+* Redis (or MySQL) writes runtime data to `/data` inside the container.
+
+* Mounting a volume there is perfect because:
+
+  * The container does **not** need pre-existing files from the image
+  * All files written there **persist** to the volume
+
+* For Flask code:
+
+  * Files are needed **at startup**
+  * A named volume at `/app` hides them
+  * Container fails unless you copy them manually
+
+---
+
+## 4. When would the volume contain your app code?
+
+1. If you manually copy the code into the volume at startup (e.g., an entrypoint script)
+2. If you use a **bind mount** to a host folder (`.:/app`) in development
+
+   * Here the host directory already has your code, so `/app` is populated
+3. If the volume was previously populated with `/app` from a container (Docker can populate it if the volume was created via `docker cp` or manually)
+
+**Otherwise:** the volume starts empty.
+
+---
+
+### ✅ Key takeaway
+
+* **Named volume** = initialized empty unless explicitly populated
+* Mounting it over `/app` **hides your image contents** at startup
+* For databases: works perfectly because data is runtime-generated
+* For static app code: does **not** work, because the container relies on the image for `/app`
+
+---
+
+
+
+
+--- 
+
+# Deploying a Monitored NGINX Web Server Using Docker (Using Docker Networks)
+
+In this example, you will learn how to use Docker to install and manage a web server using NGINX, set up a monitoring system, and configure alert notifications using **Docker user-defined networks**. This approach replaces deprecated container linking and enables built-in DNS-based service discovery.
+
+## Task Description
+
+We are going to create a new website that requires close monitoring. We will use NGINX for the web server and want to receive email notifications when the server goes down. The architecture will consist of three containers connected through a Docker network:
+
+1. **Web Container**: Runs the NGINX web server
+2. **Mailer Container**: Sends email notifications
+3. **Agent Container**: Monitors the web server and triggers the mailer when the server is down
+
+All containers will communicate using container names as hostnames over a user-defined bridge network.
+
+---
+
+## Creating a Docker Network
+
+### Step 0: Create a User-Defined Network
+
+```bash
+docker network create monitor-net
+```
+
+This network:
+
+* Provides automatic DNS-based name resolution
+* Replaces legacy `--link` functionality
+* Improves isolation and scalability
+
+All containers in this lab will be attached to `monitor-net`.
+
+---
+
+## Creating and Starting Containers
+
+### Step 1: Start NGINX Container
+
+Download, install, and start an NGINX container in detached mode on the network:
+
+```bash
+docker run -d --name web --network monitor-net nginx:latest
+```
+
+This command:
+
+* Downloads the latest NGINX image
+* Creates a container named `web`
+* Attaches it to the `monitor-net` network
+
+The service will be reachable at hostname `web` by other containers on the same network.
+
+---
+
+### Step 2: Create and Start Mailer Container
+
+Create a directory for the mailer:
+
+```sh
+mkdir mailer
+cd mailer
+```
+
+Create the `mailer.sh` script:
+
+```sh
+touch mailer.sh
+```
+
+Edit `mailer.sh`:
+
+```sh
+#!/bin/sh
+printf "CH2 Example Mailer has started.\n"
+while true
+do
+        MESSAGE=`nc -l -p 33333`
+        printf "Sending email: %s\n" "$MESSAGE"
+        sleep 1
+done
+```
+
+Create the `Dockerfile`:
+
+```Dockerfile
+# Use BusyBox as the base image (very small Linux environment)
+FROM busybox
+
+# Copy all files from the build context into /mailer inside the image
+COPY . /mailer
+
+# Set /mailer as the working directory for subsequent commands
+WORKDIR /mailer
+
+# Create a non-root user named "example"
+# -D : create user with default settings (no password)
+# -H : do not create a home directory
+# -s : set the user's login shell to /bin/sh
+RUN adduser -DHs /bin/sh example
+
+# BusyBox images → use /bin/sh
+# Bash is not available unless explicitly installed
+
+# Change ownership of the mailer script to the "example" user
+RUN chown example mailer.sh
+
+# Make the mailer script executable
+RUN chmod a+x mailer.sh
+
+# Document that the container listens on TCP port 33333
+# (this does not open the port by itself)
+EXPOSE 33333
+
+# Switch to the non-root user for all subsequent commands
+USER example
+
+# Run the mailer script when the container starts
+CMD ["/mailer/mailer.sh"] 
+```
+
+Build the image:
+
+```bash
+docker build -t mailer-image .
+```
+
+Run the mailer container on the network:
+
+```bash
+docker run -d --name mailer --network monitor-net mailer-image
+```
+
+---
+
+## Running Interactive Containers
+
+### Step 3: Start an Interactive Container for Testing
+
+Run an interactive BusyBox container on the same network to verify connectivity:
+
+```bash
+docker run -it --name web_test --network monitor-net busybox:latest /bin/sh
+```
+
+Inside the container, run:
+
+```sh
+wget -O - http://web:80/
+```
+
+You should see the **NGINX welcome page**, confirming:
+
+* Network connectivity
+* DNS resolution by container name
+
+Exit the shell:
+
+```sh
+exit
+```
+
+---
+
+## Monitoring and Notifications
+
+### Step 4: Start the Agent Container
+
+Create a directory for the watcher:
+
+```sh
+mkdir watcher
+cd watcher
+```
+
+Create the `watcher.sh` script:
+
+```sh
+touch watcher.sh
+```
+
+Edit `watcher.sh`:
+
+```sh
+#!/bin/sh
+while true
+do
+        if printf "GET / HTTP/1.0\n\n" | nc -w 2 web 80 | grep -q "200 OK"
+        then
+                echo "System up."
+        else
+                printf "To: admin@work Message: The service is down!" | nc mailer 33333
+                break
+        fi
+        sleep 1
+done
+```
+
+Key changes:
+
+* Uses container names (`web`, `mailer`) instead of environment variables
+* Relies on Docker’s embedded DNS
+
+Create the `Dockerfile`:
+
+```Dockerfile
+FROM busybox
+COPY . /watcher
+WORKDIR /watcher
+
+RUN adduser -DHs /bin/sh example
+RUN chown example watcher.sh
+RUN chmod a+x watcher.sh
+
+USER example
+CMD ["/watcher/watcher.sh"]
+```
+
+Build the agent image:
+
+```bash
+docker build -t watcher-image .
+```
+
+Run the agent container on the network:
+
+```bash
+docker run -it --name agent --network monitor-net watcher-image
+```
+
+This container will:
+
+* Continuously check the web server
+* Print “System up.”
+* Notify the mailer if the web service goes down
+
+Detach using:
+
+```
+Ctrl + P, Ctrl + Q
+```
+
+---
+
+## Managing Containers
+
+### Step 5: List Running Containers
+
+```bash
+docker ps
+```
+
+---
+
+### Step 6: Restart Containers
+
+```bash
+docker restart web
+docker restart mailer
+docker restart agent
+```
+
+---
+
+### Step 7: View Container Logs
+
+```bash
+docker logs web
+docker logs mailer
+docker logs agent
+```
+
+Expected output:
+
+* **Web**: HTTP requests
+* **Mailer**: “CH2 Example Mailer has started.”
+* **Agent**: Repeated “System up.”
+
+---
+
+### Step 8: Follow Logs in Real Time
+
+```bash
+docker logs -f agent
+```
+
+Press `Ctrl + C` to stop.
+
+---
+
+### Step 9: Test the Monitoring System
+
+Stop the web server:
+
+```bash
+docker stop web
+```
+
+Check mailer logs:
+
+```bash
+docker logs mailer
+```
+
+Expected output:
+
+```
+Sending email: To: admin@work Message: The service is down!
+```
+
+---
+
+## Conclusion
+
+You have successfully implemented a Docker-based monitoring system using **user-defined networks instead of deprecated container linking**. This approach is scalable, secure, and aligned with modern Docker practices. You now understand how containers discover each other via DNS, how to monitor services, and how to react to failures automatically.
